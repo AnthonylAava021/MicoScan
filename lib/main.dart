@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestEntry, BoxHitTestResult;
@@ -12,8 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-
 import 'clima_service.dart';
+import 'ma_analysis/segmentacion_clasificacion_screen.dart';
 
 IconData weatherIcon(int? code) {
   if (code == null) return Icons.wb_sunny_rounded;
@@ -48,15 +48,40 @@ class MicoTaxApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2E7D32),
+          seedColor: const Color(0xFF0B57D0),
           brightness: Brightness.light,
         ),
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF4F6F8),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: Color(0xFF1D1D1F),
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+        ),
         cardTheme: CardThemeData(
-          elevation: 2,
+          color: Colors.white,
+          elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
           ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF0B57D0),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            textStyle: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        chipTheme: ChipThemeData(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+          side: BorderSide(color: Colors.white.withOpacity(0.35)),
+          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          backgroundColor: const Color(0xFFDCE8FF),
+          selectedColor: const Color(0xFFDCE8FF),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         ),
       ),
       home: const SplashScreen(),
@@ -293,7 +318,7 @@ class _HomeScreenState extends State<HomeScreen>
   String? _climaError;
   Timer? _climaRefreshTimer;
 
-  final List<GlobalKey> _featureCardKeys = List.generate(4, (_) => GlobalKey());
+  final List<GlobalKey> _featureCardKeys = List.generate(5, (_) => GlobalKey());
   bool _guiaTarjetasActiva = false;
   int _guiaTarjetasIndice = 0;
   Rect? _guiaCardBounds;
@@ -479,6 +504,12 @@ class _HomeScreenState extends State<HomeScreen>
 
   static const List<Map<String, dynamic>> _tarjetasMenuGuia = [
     {
+      'title': 'Segmentación y clasificación',
+      'icon': Icons.photo_camera_back_rounded,
+      'description': 'Módulo central para análisis por imagen. Permite captura directa o carga desde galería, '
+          'segmentación por umbral y clasificación preliminar de la muestra con reporte de confianza.',
+    },
+    {
       'title': 'Predecir especie',
       'icon': Icons.science_rounded,
       'description': 'Introduce las características de la espora que observas (tamaño, forma, color, '
@@ -541,6 +572,352 @@ class _HomeScreenState extends State<HomeScreen>
         _guiaCardBounds = null;
       });
     }
+  }
+
+  void _abrirSegmentacionPrincipal(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const SegmentacionClasificacionScreen(),
+      ),
+    );
+  }
+
+  Widget _buildSegmentacionPrincipalCard(ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1E3A8A), Color(0xFF312E81)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1E3A8A).withOpacity(0.28),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => _abrirSegmentacionPrincipal(context),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.psychology_alt_rounded, color: Colors.white),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Módulo principal de tesis',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'v1',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Segmentación y clasificación de micorrizas arbusculares',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Captura o carga una imagen, ejecuta segmentación preliminar y obtiene una clasificación orientativa con indicadores cuantitativos.',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 14,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildHeroBadge('Foto / Galería'),
+                    _buildHeroBadge('Segmentación por umbral'),
+                    _buildHeroBadge('Reporte técnico'),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF1E3A8A),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () => _abrirSegmentacionPrincipal(context),
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                  label: const Text('Iniciar análisis de imagen'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeroBadge(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(0.25)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDiagnosticoHeroCard(ThemeData theme) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFDDF5F2), Color(0xFFCBECE8)],
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 104,
+            height: 104,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Icon(
+              Icons.document_scanner_rounded,
+              size: 48,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Ver diagnóstico',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: () => _abrirSegmentacionPrincipal(context),
+            child: const Text('Tomar una foto'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCondicionesResumenStrip(ThemeData theme) {
+    final temp = (_climaData?['temp'] as double?)?.round();
+    final estadoClima = (_climaData?['weather_name'] as String?) ?? 'Condición estable';
+    final humedad = _climaData?['humidity'] as int?;
+    final estadoPulv = humedad == null
+        ? 'Moderado'
+        : (humedad >= 75 ? 'No recomendado' : (humedad >= 55 ? 'Moderado' : 'Favorable'));
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compacto = constraints.maxWidth < 360;
+        final tarjetaClima = Container(
+          height: 116,
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFC7D8FF), width: 1.4),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${DateTime.now().day} ${_mesCorto(DateTime.now().month)}',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+              ),
+              const Spacer(),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Text(
+                      temp == null ? '— °C' : '$temp °C',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 31,
+                        fontWeight: FontWeight.w700,
+                        height: 0.95,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    weatherIcon(_climaData?['weather_code'] as int?),
+                    size: 24,
+                    color: const Color(0xFFF1C40F),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+        final tarjetaCondicion = Container(
+          height: 116,
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE8DFC3), width: 1.4),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Condiciones de análisis',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.12,
+                        color: theme.colorScheme.onSurface.withOpacity(0.76),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Expanded(
+                      child: FittedBox(
+                        alignment: Alignment.centerLeft,
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          estadoPulv,
+                          maxLines: 1,
+                          style: const TextStyle(
+                            fontSize: 38,
+                            fontWeight: FontWeight.w700,
+                            height: 0.95,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      estadoClima,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurface.withOpacity(0.58),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Align(
+                alignment: Alignment.topCenter,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF4F6F8),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'hasta 5 p. m.',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface.withOpacity(0.72),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+        return Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFDDF5F2),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: compacto
+              ? Column(
+                  children: [
+                    tarjetaClima,
+                    const SizedBox(height: 8),
+                    tarjetaCondicion,
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(flex: 32, child: tarjetaClima),
+                    const SizedBox(width: 8),
+                    Expanded(flex: 58, child: tarjetaCondicion),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  String _mesCorto(int mes) {
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    if (mes < 1 || mes > 12) return '—';
+    return meses[mes - 1];
   }
 
   Widget _buildClimaCard(ThemeData theme) {
@@ -945,29 +1322,31 @@ class _HomeScreenState extends State<HomeScreen>
         }
       },
       child: Scaffold(
+      backgroundColor: const Color(0xFFF4F6F8),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: const Color(0xFF0B57D0),
+        foregroundColor: Colors.white,
+        onPressed: () => _abrirSegmentacionPrincipal(context),
+        child: const Icon(Icons.add_rounded, size: 30),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: 0,
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.eco_outlined), selectedIcon: Icon(Icons.eco), label: 'Inicio'),
+          NavigationDestination(icon: Icon(Icons.groups_outlined), selectedIcon: Icon(Icons.groups), label: 'Comunidad'),
+          NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded), label: 'Perfil'),
+        ],
+      ),
       body: Stack(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  theme.colorScheme.primaryContainer.withOpacity(0.3),
-                  theme.colorScheme.surface,
-                ],
-              ),
-            ),
-            child: SafeArea(
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: CustomScrollView(
+          SafeArea(
+              child: CustomScrollView(
                   slivers: [
                 SliverAppBar(
                   expandedHeight: 56,
                   floating: false,
                   pinned: true,
-                  backgroundColor: theme.colorScheme.primary,
+                  backgroundColor: Colors.white,
                   elevation: 0,
                   actions: [
                     TextButton(
@@ -975,7 +1354,7 @@ class _HomeScreenState extends State<HomeScreen>
                       child: Text(
                         'Muéstrame',
                         style: TextStyle(
-                          color: theme.colorScheme.onPrimary,
+                          color: theme.colorScheme.onSurface,
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
                         ),
@@ -984,7 +1363,7 @@ class _HomeScreenState extends State<HomeScreen>
                     PopupMenuButton<String>(
                       icon: Icon(
                         Icons.more_vert,
-                        color: theme.colorScheme.onPrimary,
+                        color: theme.colorScheme.onSurface,
                       ),
                       color: theme.colorScheme.surface,
                       onSelected: (value) => _onMenuPrincipalSeleccionado(context, theme, value),
@@ -1022,14 +1401,14 @@ class _HomeScreenState extends State<HomeScreen>
                       children: [
                         Icon(
                           Icons.eco,
-                          color: theme.colorScheme.onPrimary,
+                          color: const Color(0xFF2E7D32),
                           size: 24,
                         ),
                         const SizedBox(width: 8),
                         Text(
                           'MicoTax',
                           style: TextStyle(
-                            color: theme.colorScheme.onPrimary,
+                            color: theme.colorScheme.onSurface,
                             fontWeight: FontWeight.bold,
                             fontSize: 18,
                             letterSpacing: 1,
@@ -1046,14 +1425,16 @@ class _HomeScreenState extends State<HomeScreen>
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      _buildClimaCard(theme),
-                      const SizedBox(height: 20),
+                      _buildDiagnosticoHeroCard(theme),
+                      const SizedBox(height: 12),
+                      _buildCondicionesResumenStrip(theme),
+                      const SizedBox(height: 22),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
                         child: Text(
-                          'Funcionalidades',
+                          'Herramientas',
                           style: TextStyle(
-                            fontSize: 22,
+                            fontSize: 30,
                             fontWeight: FontWeight.bold,
                             color: theme.colorScheme.onSurface,
                           ),
@@ -1062,7 +1443,7 @@ class _HomeScreenState extends State<HomeScreen>
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16),
                         child: Text(
-                          'Todo lo que necesitas en un solo lugar',
+                          'Módulos de soporte para el análisis de MA',
                           style: TextStyle(
                             fontSize: 14,
                             color: theme.colorScheme.onSurface.withOpacity(0.6),
@@ -1077,8 +1458,6 @@ class _HomeScreenState extends State<HomeScreen>
               ],
             ),
           ),
-        ),
-        ),
         ...(_guiaTarjetasActiva
             ? [
                 Positioned.fill(
@@ -1247,6 +1626,12 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildFeaturesGrid(BuildContext context, ThemeData theme) {
     final features = [
       {
+        'icon': Icons.photo_camera_back_rounded,
+        'title': 'Segmentar imagen',
+        'description': 'Módulo principal',
+        'color': Colors.indigo,
+      },
+      {
         'icon': Icons.science_rounded,
         'title': 'Predecir especie',
         'description': 'Identificar hongo micorrízico',
@@ -1274,6 +1659,7 @@ class _HomeScreenState extends State<HomeScreen>
     ];
 
     final onTaps = [
+      () => _abrirSegmentacionPrincipal(context),
       () => Navigator.push(
             context,
             MaterialPageRoute(
@@ -2610,39 +2996,48 @@ class _HomeScreenState extends State<HomeScreen>
     String? imagePath,
   }) {
     const iconSize = 30.0;
+    final isNovedad = title == 'Guía de campos' || title == 'Sobre micorrizas';
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         splashColor: color.withOpacity(0.2),
         highlightColor: color.withOpacity(0.08),
         child: Ink(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: color.withOpacity(0.25),
-              width: 1.5,
+              color: const Color(0xFFE5E7EB),
+              width: 1.2,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: theme.colorScheme.shadow.withOpacity(0.06),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              if (isNovedad)
+                Align(
+                  alignment: Alignment.topRight,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEADCFB),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      'Novedad',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  color: const Color(0xFFEAF2FF),
+                  shape: BoxShape.circle,
                 ),
                 child: imagePath != null
                     ? SizedBox(
@@ -2660,9 +3055,9 @@ class _HomeScreenState extends State<HomeScreen>
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1F2937),
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 1,
@@ -2673,8 +3068,8 @@ class _HomeScreenState extends State<HomeScreen>
                 child: Text(
                   description,
                   style: TextStyle(
-                    fontSize: 11,
-                    color: theme.colorScheme.onSurface.withOpacity(0.65),
+                    fontSize: 11.5,
+                    color: const Color(0xFF6B7280),
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 2,
