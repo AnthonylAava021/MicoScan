@@ -1,7 +1,7 @@
 import requests
 import json
 
-API_KEY = "AIzaSyByh1iN0pchat_l5mJ-__tTMaFxcphrYTU"
+API_KEY = ""
 
 modelos = [
     "gemini-1.5-flash",
