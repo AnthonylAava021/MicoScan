@@ -247,7 +247,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                         const SizedBox(height: 28),
                         Text(
-                          'Sistema de predicción de especies de hongos micorrízicos',
+                          'Sistema de segmentación y clasificación de micorrizas arbusculares',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 15,
