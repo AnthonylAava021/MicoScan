@@ -12,7 +12,7 @@ class MaExportService {
   static Future<void> compartirImagen(String imagePath, {String? texto}) async {
     await Share.shareXFiles(
       [XFile(imagePath)],
-      text: texto ?? 'Resultado de análisis MicoTax - MA',
+      text: texto ?? 'Resultado de análisis MicoScan - MA',
     );
   }
 
@@ -26,7 +26,7 @@ class MaExportService {
         build: (context) => [
           pw.Header(
             level: 0,
-            child: pw.Text('Informe de análisis micorrízico - MicoTax'),
+            child: pw.Text('Informe de análisis micorrízico - MicoScan'),
           ),
           pw.Text('Fecha: ${DateTime.now()}'),
           pw.Text('Modo: ${resultado.modo.name}'),
@@ -67,6 +67,6 @@ class MaExportService {
     if (resultado.overlayPath != null && File(resultado.overlayPath!).existsSync()) {
       files.add(XFile(resultado.overlayPath!));
     }
-    await Share.shareXFiles(files, text: 'Informe MicoTax - segmentación MA');
+    await Share.shareXFiles(files, text: 'Informe MicoScan - segmentación MA');
   }
 }

@@ -24,16 +24,16 @@ IconData weatherIcon(int? code) {
 }
 
 void main() {
-  runApp(const MicoTaxApp());
+  runApp(const MicoScanApp());
 }
 
-class MicoTaxApp extends StatelessWidget {
-  const MicoTaxApp({super.key});
+class MicoScanApp extends StatelessWidget {
+  const MicoScanApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MicoTax',
+      title: 'MicoScan',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -168,7 +168,7 @@ class _SplashScreenState extends State<SplashScreen>
         title: const Text('Ubicación para el clima'),
         content: const Text(
           'Para que el apartado de clima muestre el tiempo en tu ubicación, '
-          'MicoTax necesita acceso a la ubicación.\n\n¿Permitir acceso?',
+          'MicoScan necesita acceso a la ubicación.\n\n¿Permitir acceso?',
         ),
         actions: [
           TextButton(
@@ -429,7 +429,7 @@ class _HomeScreenState extends State<HomeScreen>
             title: const Text('Objetivo de la aplicación'),
             content: const SingleChildScrollView(
               child: Text(
-                'MicoTax tiene como objetivo apoyar el análisis de imágenes de hongos micorrízicos arbusculares (MA) '
+                'MicoScan tiene como objetivo apoyar el análisis de imágenes de hongos micorrízicos arbusculares (MA) '
                 'para la identificación y cuantificación de sus estructuras clave (Hifas, Vesículas y Arbúsculos) '
                 'a partir de muestras microscópicas.\n\n'
                 'La aplicación permite capturar o cargar imágenes, realizar segmentación y obtener una clasificación '
@@ -452,7 +452,7 @@ class _HomeScreenState extends State<HomeScreen>
             title: const Text('Gracias'),
             content: const SingleChildScrollView(
               child: Text(
-                'Gracias por usar MicoTax.\n\n'
+                'Gracias por usar MicoScan.\n\n'
                 'Tu feedback y uso de la aplicación ayudan a mejorar la identificación de hongos micorrízicos '
                 'y a divulgar el conocimiento sobre la micorriza.',
               ),
@@ -473,9 +473,9 @@ class _HomeScreenState extends State<HomeScreen>
             title: const Text('Acerca de'),
             content: const SingleChildScrollView(
               child: Text(
-                'MicoTax\n'
-                'Sistema de predicción de especies de hongos micorrízicos.\n\n'
-                'Versión 1.0.0',
+                'MicoScan\n'
+                'Sistema de análisis por imagen (segmentación y clasificación) de estructuras de hongos micorrízicos arbusculares.\n\n'
+                'Versión 1.0.1',
               ),
             ),
             actions: [
@@ -488,6 +488,237 @@ class _HomeScreenState extends State<HomeScreen>
         );
         break;
     }
+  }
+
+  void _mostrarDetallesGiiar(BuildContext context, ThemeData theme) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: theme.colorScheme.surface,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.hub_rounded,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'GIIAR',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Grupo de Investigación en Inteligencia Artificial y Reconocimiento Facial',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Universidad Politécnica Salesiana\nSede Guayaquil, Ecuador',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Divider(height: 24, thickness: 1.2),
+              Text(
+                'Perfil y Misión',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'El GIIAR se dedica a organizar, analizar, modelar e implementar proyectos de investigación en el ámbito de la Inteligencia Artificial, con el objetivo de abordar problemas concretos del entorno social y cultural, aspirando a ser un referente científico nacional e internacional.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  height: 1.4,
+                  color: theme.colorScheme.onSurface.withOpacity(0.85),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Coordinador',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.person_rounded, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Quiroz Martinez Miguel Angel',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Líneas de Investigación Clave',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildLineaResearchItem(theme, 'Inteligencia artificial y aprendizaje automático'),
+              _buildLineaResearchItem(theme, 'Reconocimiento facial y visión por computadora'),
+              _buildLineaResearchItem(theme, 'Analítica predictiva y sistemas inteligentes'),
+              _buildLineaResearchItem(theme, 'Tecnologías inclusivas y educativas con IA'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: TextButton.styleFrom(
+              foregroundColor: theme.colorScheme.primary,
+            ),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLineaResearchItem(ThemeData theme, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 4.0),
+            child: Icon(
+              Icons.circle,
+              size: 6,
+              color: theme.colorScheme.primary.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.8),
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGiiarCreditCard(BuildContext context, ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xFFE5E7EB),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _mostrarDetallesGiiar(context, theme),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8F0FE),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.hub_rounded,
+                    color: Color(0xFF0B57D0),
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'RESPALDO CIENTÍFICO',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0B57D0),
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Desarrollado por GIIAR - UPS',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Grupo de Inteligencia Artificial y Reconocimiento Facial. Presiona para ver más.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: theme.colorScheme.onSurface.withOpacity(0.4),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   static const List<Map<String, dynamic>> _tarjetasMenuGuia = [
@@ -1370,7 +1601,7 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'MicoTax',
+                          'MicoScan',
                           style: TextStyle(
                             color: theme.colorScheme.onSurface,
                             fontWeight: FontWeight.bold,
@@ -1415,6 +1646,8 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                       ),
                       _buildFeaturesGrid(context, theme),
+                      const SizedBox(height: 24),
+                      _buildGiiarCreditCard(context, theme),
                       const SizedBox(height: 24),
                     ]),
                   ),

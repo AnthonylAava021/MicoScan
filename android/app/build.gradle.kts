@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.micotax"
+    namespace = "com.example.micoscan"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +16,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.micotax"
+        applicationId = "com.example.micoscan"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

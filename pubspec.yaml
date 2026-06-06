@@ -1,8 +1,8 @@
-name: micotax
-description: "Aplicación predictiva de hongos micorrizos"
+name: micoscan
+description: "Aplicación de clasificación y segmentación de hongos micorrízicos arbusculares"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.1+1
 
 environment:
   sdk: ^3.10.7
