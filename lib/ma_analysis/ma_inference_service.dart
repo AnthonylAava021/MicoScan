@@ -3,27 +3,33 @@ import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
-import 'package:image/image.dart' as img;
 
+import 'amf_local_classifier.dart';
+import 'dev_http_client.dart';
 import 'ma_image_processor.dart';
 import 'ma_models.dart';
 
-/// URL del backend FastAPI/Flask. En emulador Android: http://10.0.2.2:8000
+
+/// URL del backend FastAPI con Mask R-CNN completo.
+/// El servidor corre en el PC con: python micoscan_server.py
 const String kMaInferenceApiUrl = String.fromEnvironment(
   'MA_API_URL',
-  defaultValue: 'http://10.0.2.2:8000/api/infer',
+  defaultValue: 'https://dana-epa-exhibition-slight.trycloudflare.com/api/infer',
 );
 
 class MaInferenceService {
-  static const _timeoutRemoto = Duration(seconds: 30);
+  // Imagenes grandes con patches 768x768 tardan ~30-60s en GPU
+  static const int _kTimeoutSec = 180;
 
   static Future<bool> hayConectividad() async {
     final result = await Connectivity().checkConnectivity();
     return !result.contains(ConnectivityResult.none);
   }
 
-  /// RF-03: inferencia local offline (edge). Integrar `assets/models/ma_mask_rcnn_int8.tflite`
-  /// con `tflite_flutter` cuando el modelo cuantizado esté disponible.
+  /// RF-03: inferencia local offline con modelo ONNX (ResNet-50 backbone).
+  /// Clasifica presencia de arbúsculo, vesícula e hifa mediante `AmfLocalClassifier`.
+  /// Las visualizaciones (máscara, gradcam, overlay) se generan por heurística
+  /// local mientras el Mask R-CNN completo no esté disponible en edge.
   static Future<MaResultadoAnalisis> inferirLocal({
     required String imagePath,
     required double umbralBrillo,
@@ -31,11 +37,32 @@ class MaInferenceService {
     final inicio = DateTime.now();
     final source = await MaImageProcessor.validarYCargar(imagePath);
     final workDir = await MaImageProcessor.workDirectory();
+
+    // ── 1. Clasificación real con el modelo ONNX ────────────────────────────
+    await AmfLocalClassifier.instance.load();
+    final probs = await AmfLocalClassifier.instance.classifyImage(source);
+
+    // Mapear a MaEstructuraDetectada (excluir background)
+    final estructurasOnnx = [
+      MaEstructuraDetectada(nombre: 'Arbúsculo', confianza: probs['arbuscule']!),
+      MaEstructuraDetectada(nombre: 'Vesícula',  confianza: probs['vesicle']!),
+      MaEstructuraDetectada(nombre: 'Hifa',      confianza: probs['hypha']!),
+    ]..sort((a, b) => b.confianza.compareTo(a.confianza));
+
+    // ── 2. Visualizaciones locales (heurística de brillo) ───────────────────
     final data = await MaImageProcessor.analizarEdge(
       source: source,
       umbralBrillo: umbralBrillo,
       workDir: workDir,
     );
+
+    // ── 3. Resumen enriquecido con probabilidades reales ────────────────────
+    final resumenOnnx =
+        'Clasificación offline (ONNX ResNet-50). '
+        'Arbúsculo: ${(probs["arbuscule"]! * 100).toStringAsFixed(1)}% | '
+        'Vesícula: ${(probs["vesicle"]! * 100).toStringAsFixed(1)}% | '
+        'Hifa: ${(probs["hypha"]! * 100).toStringAsFixed(1)}%. '
+        'Área segmentada: ${(data.areaSegmentada * 100).toStringAsFixed(1)}%.';
 
     return MaResultadoAnalisis(
       modo: MaModoInferencia.local,
@@ -43,9 +70,9 @@ class MaInferenceService {
       mascaraPath: data.mascaraPath,
       gradCamPath: data.gradCamPath,
       overlayPath: data.overlayPath,
-      estructuras: data.estructuras,
+      estructuras: estructurasOnnx,
       cajas: data.cajas,
-      resumen: data.resumen,
+      resumen: resumenOnnx,
       areaSegmentada: data.areaSegmentada,
       latenciaMs: DateTime.now().difference(inicio).inMilliseconds,
       offline: true,
@@ -62,25 +89,32 @@ class MaInferenceService {
     }
 
     final inicio = DateTime.now();
-    final source = await MaImageProcessor.validarYCargar(imagePath);
-    final processed = MaImageProcessor.preprocesar(
-      source,
-      size: MaImageProcessor.inputSizeRemote,
-    );
-    final pngBytes = img.encodePng(processed);
+    // Para modo API enviamos la imagen original sin redimensionar.
+    // El servidor hace sliding window de patches 512x512 internamente.
+    final rawBytes = await File(imagePath).readAsBytes();
     final uri = Uri.parse(apiUrl ?? kMaInferenceApiUrl);
 
     final request = http.MultipartRequest('POST', uri)
+      ..headers['ngrok-skip-browser-warning'] = 'true'
+        ..headers['User-Agent'] = 'MicoScan-App/1.0'
+        ..headers['Accept'] = 'application/json'
       ..files.add(
         http.MultipartFile.fromBytes(
           'image',
-          pngBytes,
-          filename: 'muestra.png',
+          rawBytes,
+          filename: 'muestra.jpg',
         ),
       );
 
-    final streamed = await request.send().timeout(_timeoutRemoto);
-    final response = await http.Response.fromStream(streamed).timeout(_timeoutRemoto);
+    final client = createDevHttpClient();
+    final streamed = await client.send(request).timeout(
+      const Duration(seconds: 180),
+      onTimeout: () => throw Exception('Tiempo agotado. La imagen es muy grande o el servidor está ocupado. Intenta con una imagen más pequeña.'),
+    );
+    final response = await http.Response.fromStream(streamed).timeout(
+      const Duration(seconds: _kTimeoutSec),
+      onTimeout: () => throw Exception('Servidor no respondió a tiempo.'),
+    );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Error del servidor (${response.statusCode}): ${response.body}');
@@ -112,6 +146,12 @@ class MaInferenceService {
         .map((e) => MaBoundingBox.fromJson(e as Map<String, dynamic>))
         .toList();
 
+    // Patches info del servidor (visualización de cuadrícula)
+    final patchesRaw = json['patches'] as List<dynamic>? ?? [];
+    final patches = patchesRaw
+        .map((e) => MaPatchInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+
     String? mascaraPath;
     String? gradCamPath;
     String? overlayPath;
@@ -138,6 +178,7 @@ class MaInferenceService {
       overlayPath: overlayPath,
       estructuras: estructuras,
       cajas: cajas,
+      patches: patches,
       resumen: json['resumen'] as String? ?? 'Resultado remoto recibido correctamente.',
       areaSegmentada: (json['area_segmentada'] as num?)?.toDouble() ?? 0,
       latenciaMs: latenciaMs,

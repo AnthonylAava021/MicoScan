@@ -11,6 +11,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'clima_service.dart';
+import 'ma_analysis/estadisticas_screen.dart';
+import 'ma_analysis/preprocessing_pipeline_screen.dart';
 import 'ma_analysis/segmentacion_clasificacion_screen.dart';
 
 IconData weatherIcon(int? code) {
@@ -87,7 +89,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  static const _splashLogoPath = 'logo/LOGO HORIZONTAL.png';
+  static const _splashLogoPath = 'logo/logoo.png';
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
@@ -311,6 +313,12 @@ class _HomeScreenState extends State<HomeScreen>
   bool _guiaTarjetasActiva = false;
   int _guiaTarjetasIndice = 0;
   Rect? _guiaCardBounds;
+  int _selectedIndex = 0;
+
+  // Carrusel
+  late PageController _carruselController;
+  int _carruselPagina = 0;
+  Timer? _carruselTimer;
 
   @override
   void initState() {
@@ -331,6 +339,18 @@ class _HomeScreenState extends State<HomeScreen>
     _controller.forward();
     _cargarClima();
     _climaRefreshTimer = Timer.periodic(const Duration(minutes: 2), (_) => _cargarClima());
+
+    // Carrusel automático
+    _carruselController = PageController();
+    _carruselTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted) return;
+      final siguiente = (_carruselPagina + 1) % 2;
+      _carruselController.animateToPage(
+        siguiente,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    });
   }
 
   Future<void> _cargarClima() async {
@@ -769,13 +789,16 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  void _abrirSegmentacionPrincipal(BuildContext context) {
-    Navigator.push(
+  Future<void> _abrirSegmentacionPrincipal(BuildContext context) async {
+    final result = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (_) => const SegmentacionClasificacionScreen(),
       ),
     );
+    if (result == 'pipeline' && mounted) {
+      setState(() => _selectedIndex = 1);
+    }
   }
 
   Widget _buildSegmentacionPrincipalCard(ThemeData theme) {
@@ -907,10 +930,55 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Widget _buildCarruselTarjetas(ThemeData theme) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 220,
+          child: PageView(
+            controller: _carruselController,
+            onPageChanged: (i) => setState(() => _carruselPagina = i),
+            children: [
+              _buildDiagnosticoHeroCard(theme),
+              _buildCondicionesResumenStrip(theme),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(2, (i) {
+            final activo = i == _carruselPagina;
+            return GestureDetector(
+              onTap: () => _carruselController.animateToPage(
+                i,
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInOut,
+              ),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                width: activo ? 22 : 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: activo
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.primary.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
   Widget _buildDiagnosticoHeroCard(ThemeData theme) {
+
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         gradient: const LinearGradient(
@@ -920,32 +988,43 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 104,
-            height: 104,
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.7),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(18),
             ),
             child: Icon(
               Icons.document_scanner_rounded,
-              size: 48,
+              size: 36,
               color: theme.colorScheme.primary,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Text(
             'Ver diagnóstico',
-            style: theme.textTheme.headlineSmall?.copyWith(
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,
               color: const Color(0xFF1E293B),
             ),
           ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: () => _abrirSegmentacionPrincipal(context),
-            child: const Text('Tomar una foto'),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => _abrirSegmentacionPrincipal(context),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: const Text('Tomar una foto', style: TextStyle(fontSize: 13)),
+            ),
           ),
         ],
       ),
@@ -953,161 +1032,280 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildCondicionesResumenStrip(ThemeData theme) {
-    final temp = (_climaData?['temp'] as double?)?.round();
+    final temp = _climaData == null
+        ? null
+        : (_climaData!['temp'] as double?)?.round();
     final estadoClima = (_climaData?['weather_name'] as String?) ?? 'Condición estable';
-    final humedad = _climaData?['humidity'] as int?;
-    final estadoPulv = humedad == null
-        ? 'Moderado'
-        : (humedad >= 75 ? 'No recomendado' : (humedad >= 55 ? 'Moderado' : 'Favorable'));
+    final humedad    = _climaData?['humidity'] as int?;
+    final feels      = (_climaData?['feels_like'] as double?)?.round();
+    final code       = _climaData?['weather_code'] as int?;
+    final wind       = (_climaData?['wind_speed'] as num?)?.toDouble();
+    final precip     = (_climaData?['precipitation'] as num?)?.toDouble() ?? 0;
+    final sueloNivel = _climaData?['suelo_nivel'] as String? ?? '—';
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compacto = constraints.maxWidth < 360;
-        final tarjetaClima = Container(
-          height: 116,
-          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFC7D8FF), width: 1.4),
+    // Estado de pulverización basado en humedad
+    final Color estadoColor;
+    final String estadoPulv;
+    final IconData estadoIcon;
+    if (humedad == null) {
+      estadoPulv  = 'Sin datos';
+      estadoColor = Colors.grey;
+      estadoIcon  = Icons.help_outline_rounded;
+    } else if (humedad >= 75) {
+      estadoPulv  = 'No recomendado';
+      estadoColor = const Color(0xFFE53935);
+      estadoIcon  = Icons.cancel_rounded;
+    } else if (humedad >= 55) {
+      estadoPulv  = 'Moderado';
+      estadoColor = const Color(0xFFF57C00);
+      estadoIcon  = Icons.warning_amber_rounded;
+    } else {
+      estadoPulv  = 'Favorable';
+      estadoColor = const Color(0xFF2E7D32);
+      estadoIcon  = Icons.check_circle_rounded;
+    }
+
+    final gradColors = _climaGradient(code);
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: gradColors,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: gradColors[0].withValues(alpha: 0.4),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${DateTime.now().day} ${_mesCorto(DateTime.now().month)}',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-              ),
-              const Spacer(),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Text(
-                      temp == null ? '— °C' : '$temp °C',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 31,
-                        fontWeight: FontWeight.w700,
-                        height: 0.95,
-                        letterSpacing: -0.4,
-                      ),
-                    ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Fila 1: fecha + badge estado ──────────────────────────────
+            Row(
+              children: [
+                Text(
+                  '${DateTime.now().day} ${_mesCorto(DateTime.now().month)}  •  ${TimeOfDay.now().format(context)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w500,
                   ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    weatherIcon(_climaData?['weather_code'] as int?),
-                    size: 24,
-                    color: const Color(0xFFF1C40F),
+                ),
+                const Spacer(),
+                // Badge condición de análisis
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: estadoColor.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: estadoColor.withValues(alpha: 0.6), width: 1),
                   ),
-                ],
-              ),
-            ],
-          ),
-        );
-        final tarjetaCondicion = Container(
-          height: 116,
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE8DFC3), width: 1.4),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Condiciones de análisis',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        height: 1.12,
-                        color: theme.colorScheme.onSurface.withOpacity(0.76),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Expanded(
-                      child: FittedBox(
-                        alignment: Alignment.centerLeft,
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          estadoPulv,
-                          maxLines: 1,
-                          style: const TextStyle(
-                            fontSize: 38,
-                            fontWeight: FontWeight.w700,
-                            height: 0.95,
-                            letterSpacing: -0.5,
-                          ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(estadoIcon, size: 13, color: Colors.white),
+                      const SizedBox(width: 5),
+                      Text(
+                        estadoPulv,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      estadoClima,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurface.withOpacity(0.58),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // ── Fila 2: temperatura grande + icono glow ────────────────────
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Icono clima con glow
+                Container(
+                  width: 60, height: 60,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        blurRadius: 14,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    _climaLoading ? Icons.hourglass_top_rounded : weatherIcon(code),
+                    size: 30,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Temperatura
+                      if (_climaLoading)
+                        const Text(
+                          '— °C',
+                          style: TextStyle(
+                            fontSize: 42,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white54,
+                            height: 1.0,
+                            letterSpacing: -1.5,
+                          ),
+                        )
+                      else
+                        RichText(
+                          text: TextSpan(
+                            children: [
+                              TextSpan(
+                                text: temp != null ? '$temp' : '—',
+                                style: const TextStyle(
+                                  fontSize: 48,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                  height: 1.0,
+                                  letterSpacing: -2,
+                                ),
+                              ),
+                              const TextSpan(
+                                text: ' °C',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.white70,
+                                  height: 2.0,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 2),
+                      Text(
+                        estadoClima,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (feels != null)
+                        Text(
+                          'Sensación $feels °C',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white60,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            // ── Línea divisora sutil ──────────────────────────────────────
+            if (!_climaLoading && _climaData != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                height: 1,
+                color: Colors.white.withValues(alpha: 0.2),
+              ),
+              const SizedBox(height: 14),
+
+              // ── Fila 3: métricas compactas ──────────────────────────────
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    if (humedad != null)
+                      _buildWeatherPill(Icons.water_drop_rounded, '$humedad%', 'Humedad'),
+                    if (sueloNivel != '—')
+                      _buildWeatherPill(Icons.grass_rounded, sueloNivel, 'Suelo'),
+                    if (precip > 0)
+                      _buildWeatherPill(Icons.umbrella_rounded, '${precip.toStringAsFixed(1)} mm', 'Lluvia'),
+                    if (wind != null)
+                      _buildWeatherPill(Icons.air_rounded, '${(wind * 3.6).round()} km/h', 'Viento'),
+                    // Etiqueta "Condiciones análisis"
+                    Container(
+                      margin: const EdgeInsets.only(left: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(estadoIcon, size: 14, color: Colors.white),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Análisis',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            estadoPulv,
+                            style: const TextStyle(fontSize: 9, color: Colors.white60),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Align(
-                alignment: Alignment.topCenter,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF4F6F8),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'hasta 5 p. m.',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurface.withOpacity(0.72),
-                    ),
-                  ),
-                ),
-              ),
             ],
-          ),
-        );
-
-        return Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFDDF5F2),
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: compacto
-              ? Column(
-                  children: [
-                    tarjetaClima,
-                    const SizedBox(height: 8),
-                    tarjetaCondicion,
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(flex: 32, child: tarjetaClima),
-                    const SizedBox(width: 8),
-                    Expanded(flex: 58, child: tarjetaCondicion),
-                  ],
-                ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
+
+  Widget _buildWeatherPill(IconData icon, String value, String label) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24, width: 0.8),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.white),
+          const SizedBox(height: 3),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+          Text(label,
+              style: const TextStyle(fontSize: 9, color: Colors.white60)),
+        ],
+      ),
+    );
+  }
+
+
 
   String _mesCorto(int mes) {
     const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -1115,15 +1313,34 @@ class _HomeScreenState extends State<HomeScreen>
     return meses[mes - 1];
   }
 
+  // ── Gradiente dinámico según código de clima ──────────────────────────────
+  List<Color> _climaGradient(int? code) {
+    if (code == null) return [const Color(0xFF1565C0), const Color(0xFF42A5F5)];
+    if (code == 0)           return [const Color(0xFFFF8F00), const Color(0xFFFFCA28)]; // soleado
+    if (code <= 2)           return [const Color(0xFF1565C0), const Color(0xFF64B5F6)]; // parcial
+    if (code <= 48)          return [const Color(0xFF546E7A), const Color(0xFF90A4AE)]; // niebla
+    if (code <= 67)          return [const Color(0xFF0277BD), const Color(0xFF4FC3F7)]; // lluvia
+    if (code <= 86)          return [const Color(0xFF37474F), const Color(0xFF90A4AE)]; // nieve
+    return [const Color(0xFF4A148C), const Color(0xFF7B1FA2)];                          // tormenta
+  }
+
   Widget _buildClimaCard(ThemeData theme) {
+    final code      = _climaData?['weather_code'] as int?;
+    final gradColors = _climaGradient(code);
+
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: gradColors,
+        ),
         boxShadow: [
           BoxShadow(
-            color: theme.colorScheme.primary.withOpacity(0.2),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: gradColors[0].withValues(alpha: 0.45),
+            blurRadius: 22,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -1131,290 +1348,86 @@ class _HomeScreenState extends State<HomeScreen>
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _onClimaTap(context, theme),
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  theme.colorScheme.primary.withOpacity(0.22),
-                  theme.colorScheme.primary.withOpacity(0.08),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: theme.colorScheme.primary.withOpacity(0.3),
-                width: 1.5,
-              ),
-            ),
+          borderRadius: BorderRadius.circular(24),
+          splashColor: Colors.white12,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── Fila superior: ubicación + refresh ──────────────────────
                 Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.thermostat_rounded,
-                        color: theme.colorScheme.primary,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
+                    const Icon(Icons.location_on_rounded,
+                        size: 14, color: Colors.white70),
+                    const SizedBox(width: 4),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _climaData?['location'] ??
-                                (_climaLoading ? 'Tu ubicación' : (_climaSinUbicacion ? 'Clima' : 'Clima en tiempo real')),
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  'En tiempo real',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                      child: Text(
+                        _climaData?['location'] ??
+                            (_climaLoading
+                                ? 'Obteniendo ubicación...'
+                                : _climaSinUbicacion
+                                    ? 'Sin ubicación'
+                                    : 'Clima en tiempo real'),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (_climaLoading)
-                      SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: theme.colorScheme.primary,
+                    // Badge "En vivo"
+                    if (!_climaLoading && _climaData != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                              color: Colors.white38, width: 0.8),
                         ),
-                      )
-                    else if (_climaError != null)
-                      IconButton(
-                        icon: const Icon(Icons.refresh_rounded),
-                        onPressed: _cargarClima,
-                        color: theme.colorScheme.primary,
-                      )
-                    else
-                      IconButton(
-                        icon: const Icon(Icons.refresh_rounded),
-                        onPressed: _cargarClima,
-                        color: theme.colorScheme.primary.withOpacity(0.8),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.circle,
+                                size: 6, color: Color(0xFF69F0AE)),
+                            SizedBox(width: 4),
+                            Text('En vivo',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600)),
+                          ],
+                        ),
                       ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: _cargarClima,
+                      child: _climaLoading
+                          ? const SizedBox(
+                              width: 20, height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white70))
+                          : const Icon(Icons.refresh_rounded,
+                              size: 20, color: Colors.white70),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
+
+                // ── Estado de la tarjeta ─────────────────────────────────────
                 if (_climaLoading)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Text(
-                        'Cargando datos para tu ubicación...',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      ),
-                    ),
-                  )
+                  _buildClimaShimmer()
                 else if (_climaSinUbicacion)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.location_off_rounded,
-                            size: 40,
-                            color: theme.colorScheme.primary.withOpacity(0.7),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Activa la ubicación para ver el clima en tu zona',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: theme.colorScheme.onSurface.withOpacity(0.8),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: () => openAppSettings(),
-                            icon: const Icon(Icons.settings_rounded, size: 18),
-                            label: const Text('Abrir configuración'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: theme.colorScheme.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
+                  _buildClimaSinUbicacion()
                 else if (_climaError != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        Icon(Icons.cloud_off_rounded, size: 22, color: theme.colorScheme.error),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _climaError!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: theme.colorScheme.error,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
+                  _buildClimaError()
                 else if (_climaData != null)
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final d = _climaData!;
-                      final temp = d['temp'] as double?;
-                      final feels = d['feels_like'] as double?;
-                      final humidity = d['humidity'] as int?;
-                      final precip = (d['precipitation'] as num?)?.toDouble() ?? 0;
-                      final weatherName = d['weather_name'] as String? ?? '—';
-                      final code = d['weather_code'] as int?;
-                      final sueloNivel = d['suelo_nivel'] as String? ?? '—';
-                      final sueloDesc = d['suelo_desc'] as String? ?? '';
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary.withOpacity(0.15),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  weatherIcon(code),
-                                  size: 36,
-                                  color: theme.colorScheme.primary,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    temp != null ? '${temp.round()}°C' : '—',
-                                    style: TextStyle(
-                                      fontSize: 34,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1.1,
-                                      color: theme.colorScheme.primary,
-                                    ),
-                                  ),
-                                  Text(
-                                    weatherName,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: theme.colorScheme.onSurface,
-                                    ),
-                                  ),
-                                  if (feels != null)
-                                    Text(
-                                      'Sensación ${feels.round()}°C',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: theme.colorScheme.onSurface.withOpacity(0.7),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildClimaChip(
-                                  theme,
-                                  Icons.water_drop_rounded,
-                                  'Humedad del aire',
-                                  humidity != null ? '$humidity%' : '—',
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: _buildClimaChip(
-                                  theme,
-                                  Icons.grass_rounded,
-                                  'Humedad del suelo',
-                                  sueloNivel,
-                                  sub: sueloDesc,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (precip > 0) ...[
-                            const SizedBox(height: 12),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primaryContainer.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: theme.colorScheme.primary.withOpacity(0.2),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.water_drop_rounded,
-                                    size: 20,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Precipitación (esta hora): ${precip.toStringAsFixed(1)} mm',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: theme.colorScheme.onSurface,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ],
-                      );
-                    },
-                  ),
+                  _buildClimaDatos(theme, _climaData!),
               ],
             ),
           ),
@@ -1423,16 +1436,262 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildClimaChip(ThemeData theme, IconData icon, String label, String value, {String? sub}) {
+  Widget _buildClimaShimmer() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 64, height: 64,
+              decoration: BoxDecoration(
+                color: Colors.white12,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                    width: 80, height: 42,
+                    decoration: BoxDecoration(
+                        color: Colors.white12,
+                        borderRadius: BorderRadius.circular(8))),
+                const SizedBox(height: 6),
+                Container(
+                    width: 110, height: 14,
+                    decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(6))),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: List.generate(3, (i) => Expanded(
+            child: Container(
+              margin: EdgeInsets.only(right: i < 2 ? 8 : 0),
+              height: 52,
+              decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          )),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClimaSinUbicacion() {
+    return Column(
+      children: [
+        const Icon(Icons.location_off_rounded,
+            size: 36, color: Colors.white60),
+        const SizedBox(height: 8),
+        const Text(
+          'Activa la ubicación para ver\nel clima en tu zona',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: Colors.white70),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => openAppSettings(),
+          icon: const Icon(Icons.settings_rounded,
+              size: 16, color: Colors.white),
+          label: const Text('Abrir ajustes',
+              style: TextStyle(color: Colors.white, fontSize: 13)),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Colors.white54),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClimaError() {
+    return Row(
+      children: [
+        const Icon(Icons.cloud_off_rounded, color: Colors.white70, size: 24),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            _climaError!,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+            maxLines: 2,
+          ),
+        ),
+        TextButton(
+          onPressed: _cargarClima,
+          child: const Text('Reintentar',
+              style: TextStyle(color: Colors.white, fontSize: 12)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClimaDatos(ThemeData theme, Map<String, dynamic> d) {
+    final temp        = d['temp'] as double?;
+    final feels       = d['feels_like'] as double?;
+    final humidity    = d['humidity'] as int?;
+    final precip      = (d['precipitation'] as num?)?.toDouble() ?? 0;
+    final weatherName = d['weather_name'] as String? ?? '—';
+    final code        = d['weather_code'] as int?;
+    final sueloNivel  = d['suelo_nivel'] as String? ?? '—';
+    final wind        = (d['wind_speed'] as num?)?.toDouble();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Temperatura grande + icono ──────────────────────────────────────
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Icono con circulo glow
+            Container(
+              width: 68, height: 68,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Icon(
+                weatherIcon(code),
+                size: 34,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Temperatura
+                RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: temp != null ? '${temp.round()}' : '—',
+                        style: const TextStyle(
+                          fontSize: 52,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          height: 1.0,
+                          letterSpacing: -2,
+                        ),
+                      ),
+                      const TextSpan(
+                        text: '°C',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w400,
+                          color: Colors.white70,
+                          height: 1.8,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Descripción del tiempo
+                Text(
+                  weatherName,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                if (feels != null)
+                  Text(
+                    'Sensación ${feels.round()}°C',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white60,
+                    ),
+                  ),
+              ],
+            ),
+            const Spacer(),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // ── Chips de métricas ────────────────────────────────────────────────
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              if (humidity != null)
+                _buildClimaMetric(
+                    Icons.water_drop_rounded, '$humidity%', 'Humedad'),
+              if (sueloNivel != '—')
+                _buildClimaMetric(
+                    Icons.grass_rounded, sueloNivel, 'Suelo'),
+              if (precip > 0)
+                _buildClimaMetric(
+                    Icons.umbrella_rounded,
+                    '${precip.toStringAsFixed(1)} mm',
+                    'Lluvia'),
+              if (wind != null)
+                _buildClimaMetric(
+                    Icons.air_rounded,
+                    '${(wind * 3.6).round()} km/h',
+                    'Viento'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClimaMetric(IconData icon, String value, String label) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white24, width: 0.8),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.white),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 9, color: Colors.white60),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClimaChip(ThemeData theme, IconData icon, String label,
+      String value, {String? sub}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
@@ -1443,29 +1702,20 @@ class _HomeScreenState extends State<HomeScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                if (sub != null && sub.isNotEmpty)
-                  Text(
-                    sub,
+                Text(label,
                     style: TextStyle(
-                      fontSize: 10,
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
+                        fontSize: 10,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
+                Text(value,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface)),
+                if (sub != null && sub.isNotEmpty)
+                  Text(sub,
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6))),
               ],
             ),
           ),
@@ -1474,9 +1724,13 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+
+
   @override
   void dispose() {
     _climaRefreshTimer?.cancel();
+    _carruselTimer?.cancel();
+    _carruselController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -1525,14 +1779,31 @@ class _HomeScreenState extends State<HomeScreen>
         child: const Icon(Icons.add_rounded, size: 30),
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (i) => setState(() => _selectedIndex = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.eco_outlined), selectedIcon: Icon(Icons.eco), label: 'Inicio'),
-          NavigationDestination(icon: Icon(Icons.groups_outlined), selectedIcon: Icon(Icons.groups), label: 'Comunidad'),
-          NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded), label: 'Perfil'),
+          NavigationDestination(
+            icon: Icon(Icons.eco_outlined),
+            selectedIcon: Icon(Icons.eco),
+            label: 'Inicio',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.auto_fix_high_outlined),
+            selectedIcon: Icon(Icons.auto_fix_high_rounded),
+            label: 'Pipeline',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart_rounded),
+            label: 'Estadísticas',
+          ),
         ],
       ),
-      body: Stack(
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          // Pantalla 0: Inicio
+          Stack(
         children: [
           SafeArea(
               child: CustomScrollView(
@@ -1620,9 +1891,7 @@ class _HomeScreenState extends State<HomeScreen>
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      _buildDiagnosticoHeroCard(theme),
-                      const SizedBox(height: 12),
-                      _buildCondicionesResumenStrip(theme),
+                      _buildCarruselTarjetas(theme),
                       const SizedBox(height: 22),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
@@ -1685,7 +1954,13 @@ class _HomeScreenState extends State<HomeScreen>
             : []),
         ],
       ),
-    ));
+      // Pantalla 1: Pipeline de preprocesamiento
+      const PreprocesarPipelineScreen(),
+      // Pantalla 2: Estadísticas
+      const EstadisticasScreen(),
+    ], // fin IndexedStack children
+  ), // fin IndexedStack (body)
+    )); // fin Scaffold + PopScope
   }
 
   Widget _buildGuiaTarjetasDescripcionBox(ThemeData theme) {

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:image/image.dart' as img;
@@ -10,6 +11,13 @@ class MaImageProcessor {
   static const minSize = 224;
   static const inputSizeLocal = 224;
   static const inputSizeRemote = 512;
+
+  /// Tamaño de entrada del clasificador ONNX (ResNet-50 backbone).
+  static const inputSizeOnnx = 512;
+
+  // ImageNet normalisation constants (RGB)
+  static const _mean = [0.485, 0.456, 0.406];
+  static const _std  = [0.229, 0.224, 0.225];
 
   static bool esFormatoAdmitido(String path) {
     final lower = path.toLowerCase();
@@ -50,6 +58,29 @@ class MaImageProcessor {
       }
     }
     return resized;
+  }
+
+  /// Preprocesa [source] al Float32List NCHW [1,3,512,512] requerido por el
+  /// modelo ONNX con normalización ImageNet por canal (mean/std).
+  static Float32List preprocesarAFloat32(img.Image source) {
+    final resized = img.copyResize(
+      source,
+      width: inputSizeOnnx,
+      height: inputSizeOnnx,
+      interpolation: img.Interpolation.linear,
+    );
+    final planeSize = inputSizeOnnx * inputSizeOnnx;
+    final buffer = Float32List(3 * planeSize);
+    for (var y = 0; y < inputSizeOnnx; y++) {
+      for (var x = 0; x < inputSizeOnnx; x++) {
+        final p = resized.getPixel(x, y);
+        final idx = y * inputSizeOnnx + x;
+        buffer[idx]                  = (p.r / 255.0 - _mean[0]) / _std[0];
+        buffer[planeSize + idx]      = (p.g / 255.0 - _mean[1]) / _std[1];
+        buffer[2 * planeSize + idx]  = (p.b / 255.0 - _mean[2]) / _std[2];
+      }
+    }
+    return buffer;
   }
 
   static Future<ProcessedInferenceData> analizarEdge({

@@ -50,6 +50,39 @@ class MaEstructuraDetectada {
   }
 }
 
+/// Información de un patch 768×768 analizado por el servidor
+class MaPatchInfo {
+  final int x, y, w, h;
+  final Map<String, int> conteos; // {'Arbúsculo': 3, 'Vesícula': 1, 'Hifa': 0}
+  final int nDets;
+  final String? thumbnailB64;
+
+  const MaPatchInfo({
+    required this.x,
+    required this.y,
+    required this.w,
+    required this.h,
+    required this.conteos,
+    required this.nDets,
+    this.thumbnailB64,
+  });
+
+  factory MaPatchInfo.fromJson(Map<String, dynamic> json) {
+    final rawConteos = json['conteos'] as Map<String, dynamic>? ?? {};
+    return MaPatchInfo(
+      x: (json['x'] as num?)?.toInt() ?? 0,
+      y: (json['y'] as num?)?.toInt() ?? 0,
+      w: (json['w'] as num?)?.toInt() ?? 768,
+      h: (json['h'] as num?)?.toInt() ?? 768,
+      conteos: rawConteos.map((k, v) => MapEntry(k, (v as num).toInt())),
+      nDets: (json['n_dets'] as num?)?.toInt() ?? 0,
+      thumbnailB64: json['thumbnail_b64'] as String?,
+    );
+  }
+}
+
+
+
 enum MaModoInferencia { local, remoto }
 
 class MaResultadoAnalisis {
@@ -60,6 +93,7 @@ class MaResultadoAnalisis {
   final String? overlayPath;
   final List<MaEstructuraDetectada> estructuras;
   final List<MaBoundingBox> cajas;
+  final List<MaPatchInfo> patches;
   final String resumen;
   final double areaSegmentada;
   final int latenciaMs;
@@ -73,6 +107,7 @@ class MaResultadoAnalisis {
     this.overlayPath,
     required this.estructuras,
     required this.cajas,
+    this.patches = const [],
     required this.resumen,
     required this.areaSegmentada,
     required this.latenciaMs,
