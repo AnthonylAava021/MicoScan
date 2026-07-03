@@ -559,6 +559,56 @@ class _EstadisticasScreenState extends State<EstadisticasScreen> {
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          // Badge modelo (M1/M2/Dual) + indicador colonización
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isApi
+                      ? const Color(0xFF0D6EFD).withValues(alpha: 0.12)
+                      : const Color(0xFF43A047).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  r.modelo.label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isApi ? const Color(0xFF0D6EFD) : const Color(0xFF43A047),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8, height: 8,
+                    decoration: BoxDecoration(
+                      color: r.colonizacion
+                          ? const Color(0xFF2E7D32)
+                          : const Color(0xFFB71C1C),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    r.colonizacion ? 'Col.' : 'No col.',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: r.colonizacion
+                          ? const Color(0xFF2E7D32)
+                          : const Color(0xFFB71C1C),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     );

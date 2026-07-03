@@ -8,12 +8,14 @@ import 'package:image_picker/image_picker.dart';
 import 'camera_capture_screen.dart';
 import 'amf_local_classifier.dart';
 import 'dev_http_client.dart';
+import 'ma_api_config.dart';
 import 'ma_export_service.dart';
 import 'ma_history_storage.dart';
 import 'ma_image_processor.dart';
 import 'ma_inference_service.dart';
 import 'ma_models.dart';
 import 'ma_pipeline_store.dart';
+import 'preprocessing_pipeline_screen.dart';
 
 class SegmentacionClasificacionScreen extends StatefulWidget {
   const SegmentacionClasificacionScreen({super.key});
@@ -34,6 +36,9 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
   bool _mostrarGradCam = false;
   double _umbral = 0.55;
   MaModoInferencia _modo = MaModoInferencia.local;
+  // v2 — API siempre usa M2; visualización GT o Máscaras
+  final MaModelo  _modeloSeleccionado = MaModelo.m2;   // API: siempre M2
+  MaModoViz _modoViz = MaModoViz.gtStyle;
   List<MaHistorialItem> _historial = [];
 
   // Estado de carga del modelo ONNX
@@ -45,6 +50,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
+    MaApiConfig.load();          // cargar URL guardada al abrir pantalla
     _cargarHistorial();
     // Pre-calentar el modelo local en segundo plano
     _preCalentarModelo();
@@ -115,7 +121,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
     store.loading = true;
     try {
       final bytes = await File(path).readAsBytes();
-      final uri = Uri.parse('https://dana-epa-exhibition-slight.trycloudflare.com/api/preprocess');
+      final uri = Uri.parse('${MaApiConfig.baseUrl}/api/preprocess');
       final req = http.MultipartRequest('POST', uri)
         ..headers['ngrok-skip-browser-warning'] = 'true'
         ..headers['User-Agent'] = 'MicoScan-App/1.0'
@@ -148,8 +154,17 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
           imagePath: _imagenPath!,
           umbralBrillo: _umbral,
         );
+      } else if (_modeloSeleccionado == MaModelo.dual) {
+        resultado = await MaInferenceService.inferirDual(
+          imagePath: _imagenPath!,
+          modoViz: _modoViz,
+        );
       } else {
-        resultado = await MaInferenceService.inferirRemoto(imagePath: _imagenPath!);
+        resultado = await MaInferenceService.inferirRemoto(
+          imagePath: _imagenPath!,
+          modelo:  _modeloSeleccionado,
+          modoViz: _modoViz,
+        );
       }
 
       final source = await MaImageProcessor.validarYCargar(_imagenPath!);
@@ -186,10 +201,76 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
     if (_mostrarGradCam && _resultado!.gradCamPath != null) {
       return _resultado!.gradCamPath;
     }
+    if (_resultado!.modo == MaModoInferencia.remoto) {
+      return _resultado!.overlayPath ?? _imagenPath;
+    }
     if (_mostrarMascara && _resultado!.overlayPath != null) {
       return _resultado!.overlayPath;
     }
     return _imagenPath;
+  }
+
+  /// Diálogo para cambiar la URL del servidor (ngrok / Cloudflare / IP local).
+  Future<void> _mostrarDialogUrl() async {
+    final ctrl = TextEditingController(text: MaApiConfig.baseUrl);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(children: [
+          Icon(Icons.wifi_tethering_rounded, size: 20),
+          SizedBox(width: 8),
+          Text('URL del servidor', style: TextStyle(fontSize: 16)),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Pega aquí la URL de ngrok o tu servidor:\n'
+              '(sin barra al final)',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(
+                hintText: 'https://xxxx.ngrok-free.app',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              keyboardType: TextInputType.url,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await MaApiConfig.resetToDefault();
+              ctrl.text = MaApiConfig.baseUrl;
+            },
+            child: const Text('Restaurar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final url = ctrl.text.trim();
+              if (url.isNotEmpty) {
+                await MaApiConfig.setBaseUrl(url);
+                if (mounted) {
+                  _snack('URL guardada: ${MaApiConfig.baseUrl}');
+                  setState(() {});
+                }
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -198,7 +279,10 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FC),
       appBar: AppBar(
-        title: const Text('Segmentar imagen MA'),
+        title: GestureDetector(
+          onLongPress: _mostrarDialogUrl,
+          child: const Text('Segmentar imagen MA'),
+        ),
         bottom: TabBar(
           controller: _tabs,
           tabs: const [
@@ -221,15 +305,13 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildRfChips(),
-        const SizedBox(height: 12),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Adquisición (RF-01 / RF-02)', style: theme.textTheme.titleMedium),
+                Text('Adquisición', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 10),
                 Row(
                   children: [
@@ -266,7 +348,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Inferencia (RF-03 / RF-04)', style: theme.textTheme.titleMedium),
+                Text('Procesos de análisis', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 // Banner de estado del modelo local
                 if (_modo == MaModoInferencia.local)
@@ -325,6 +407,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
                       ],
                     ),
                   ),
+                // ── Modo inferencia: Local / API ──────────────────────────
                 SegmentedButton<MaModoInferencia>(
                   segments: const [
                     ButtonSegment(
@@ -351,6 +434,27 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
                     divisions: 13,
                     label: _umbral.toStringAsFixed(2),
                     onChanged: (v) => setState(() => _umbral = v),
+                  ),
+                ] else ...[
+                  // ── Visualización: solo GT Style o Máscaras ─────────────
+                  const SizedBox(height: 12),
+                  Text('Visualización', style: theme.textTheme.labelLarge),
+                  const SizedBox(height: 6),
+                  SegmentedButton<MaModoViz>(
+                    segments: const [
+                      ButtonSegment(
+                        value: MaModoViz.gtStyle,
+                        label: Text('Segmentar'),
+                        icon: Icon(Icons.crop_square_rounded, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: MaModoViz.masks,
+                        label: Text('Máscaras'),
+                        icon: Icon(Icons.blur_on_rounded, size: 16),
+                      ),
+                    ],
+                    selected: {_modoViz},
+                    onSelectionChanged: (s) => setState(() => _modoViz = s.first),
                   ),
                 ],
                 const SizedBox(height: 8),
@@ -388,7 +492,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Visualización (RF-05\u201307)', style: theme.textTheme.titleMedium),
+                Text('Visualización', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 // Imagen reducida a 4:3 para que las métricas queden visibles
                 AspectRatio(
@@ -407,7 +511,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
                               fit: StackFit.expand,
                               children: [
                                 Image.file(File(_imagenVisual!), fit: BoxFit.cover),
-                                if (_resultado != null)
+                                if (_resultado != null && _resultado!.modo == MaModoInferencia.remoto)
                                   CustomPaint(
                                     painter: _BoundingBoxesPainter(_resultado!.cajas),
                                   ),
@@ -421,30 +525,31 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
                   // ── Métricas por clase (visibles sin scrollear) ─────────
                   _buildClasesCompacto(theme, _resultado!),
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: const Text('Máscara', style: TextStyle(fontSize: 13)),
-                        value: _mostrarMascara,
-                        onChanged: (v) => setState(() {
-                          _mostrarMascara = v;
-                          if (v) _mostrarGradCam = false;
-                        }),
-                      ),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: const Text('Grad-CAM', style: TextStyle(fontSize: 13)),
-                        value: _mostrarGradCam,
-                        onChanged: (v) => setState(() {
-                          _mostrarGradCam = v;
-                          if (v) _mostrarMascara = false;
-                        }),
-                      ),
-                    ].map((w) => Expanded(child: w)).toList(),
-                  ),
+                  if (_resultado!.modo == MaModoInferencia.remoto)
+                    Row(
+                      children: [
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: const Text('Máscara', style: TextStyle(fontSize: 13)),
+                          value: _mostrarMascara,
+                          onChanged: (v) => setState(() {
+                            _mostrarMascara = v;
+                            if (v) _mostrarGradCam = false;
+                          }),
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: const Text('Grad-CAM', style: TextStyle(fontSize: 13)),
+                          value: _mostrarGradCam,
+                          onChanged: (v) => setState(() {
+                            _mostrarGradCam = v;
+                            if (v) _mostrarMascara = false;
+                          }),
+                        ),
+                      ].map((w) => Expanded(child: w)).toList(),
+                    ),
                 ],
               ],
             ),
@@ -495,7 +600,11 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => Navigator.of(context).pop('pipeline'),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const PreprocesarPipelineScreen(),
+            ),
+          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Row(
@@ -737,6 +846,98 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
     );
   }
 
+  /// Badge prominente que muestra si hay colonización micorrízica detectada.
+  Widget _buildColonizacionBadge(MaResultadoAnalisis r) {
+    final hay  = r.colonizacion;
+    final color = hay ? const Color(0xFF2E7D32) : const Color(0xFFB71C1C);
+    final bgCol = hay ? const Color(0xFFE8F5E9) : const Color(0xFFFFEBEE);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: bgCol,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            hay ? Icons.check_circle_rounded : Icons.cancel_rounded,
+            color: color,
+            size: 28,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hay ? 'Colonización Detectada' : 'Sin Colonización',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  hay
+                      ? 'La raíz presenta hongos micorrízicos arbusculares'
+                      : 'No se detectaron estructuras fúngicas significativas',
+                  style: TextStyle(fontSize: 11, color: color.withValues(alpha: 0.8)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Fila de contadores: Arbúsculos N | Vesículas N | Hifas N
+  Widget _buildCountsRow(MaResultadoAnalisis r) {
+    final items = [
+      ('Arbúsculos', r.counts['arbuscule'] ?? 0, const Color(0xFFDC3232)),
+      ('Vesículas',  r.counts['vesicle']   ?? 0, const Color(0xFF32C864)),
+      ('Hifas',      r.counts['hypha']     ?? 0, const Color(0xFF3282FF)),
+    ];
+    return Row(
+      children: items.map((item) {
+        final (label, count, color) = item;
+        return Expanded(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withValues(alpha: 0.25)),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.9)),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   Widget _buildRfChips() {
     return const Wrap(
       spacing: 6,
@@ -763,7 +964,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
             Row(
               children: [
                 Expanded(
-                  child: Text('Resultados (RF-05)', style: theme.textTheme.titleMedium),
+                  child: Text('Resultados', style: theme.textTheme.titleMedium),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -775,7 +976,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
                     ),
                   ),
                   child: Text(
-                    '${r.modo.name.toUpperCase()} · ${r.latenciaMs} ms',
+                    '${r.modelo.label} · ${r.latenciaMs} ms',
                     style: TextStyle(
                       fontSize: 11,
                       color: r.offline ? Colors.indigo.shade700 : Colors.teal.shade700,
@@ -785,6 +986,12 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            // ── Badge colonización ──────────────────────────────────────────
+            _buildColonizacionBadge(r),
+            const SizedBox(height: 10),
+            // ── Contadores por clase ────────────────────────────────────────
+            if (r.counts.isNotEmpty) _buildCountsRow(r),
             const SizedBox(height: 12),
             // ── Detección principal ─────────────────────────────────────────
             if (r.principal != null)
@@ -837,8 +1044,10 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
                 ),
                 const SizedBox(width: 12),
                 _metricaTile(
-                  label: 'Estructuras det.',
-                  value: r.cajas.length.toString(),
+                  label: 'Total det.',
+                  value: r.counts.isNotEmpty
+                      ? r.totalDetecciones.toString()
+                      : r.cajas.length.toString(),
                   icon: Icons.table_chart_rounded,
                   theme: theme,
                 ),
@@ -884,7 +1093,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Exportar / compartir (RF-09)', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('Exportar / compartir', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: () {
@@ -908,7 +1117,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
 
   Widget _buildHistorialTab(ThemeData theme) {
     if (_historial.isEmpty) {
-      return const Center(child: Text('Sin análisis previos (RF-08)'));
+      return const Center(child: Text('Sin análisis previos'));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(12),

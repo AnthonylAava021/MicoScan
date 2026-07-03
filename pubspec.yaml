@@ -33,7 +33,7 @@ dev_dependencies:
 
 flutter_launcher_icons:
   android: true
-  image_path: "logo/SPLASH.png"
+  image_path: "logo/icono.png"
 
 flutter:
   uses-material-design: true

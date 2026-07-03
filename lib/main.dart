@@ -935,13 +935,19 @@ class _HomeScreenState extends State<HomeScreen>
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: 220,
+          height: 240,
           child: PageView(
             controller: _carruselController,
             onPageChanged: (i) => setState(() => _carruselPagina = i),
             children: [
-              _buildDiagnosticoHeroCard(theme),
-              _buildCondicionesResumenStrip(theme),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: _buildDiagnosticoHeroCard(theme),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: _buildCondicionesResumenStrip(theme),
+              ),
             ],
           ),
         ),
@@ -1039,7 +1045,7 @@ class _HomeScreenState extends State<HomeScreen>
     final humedad    = _climaData?['humidity'] as int?;
     final feels      = (_climaData?['feels_like'] as double?)?.round();
     final code       = _climaData?['weather_code'] as int?;
-    final wind       = (_climaData?['wind_speed'] as num?)?.toDouble();
+    final wind       = (_climaData?['wind_speed_kmh'] as num?)?.toDouble();
     final precip     = (_climaData?['precipitation'] as num?)?.toDouble() ?? 0;
     final sueloNivel = _climaData?['suelo_nivel'] as String? ?? '—';
 
@@ -1241,7 +1247,7 @@ class _HomeScreenState extends State<HomeScreen>
                     if (precip > 0)
                       _buildWeatherPill(Icons.umbrella_rounded, '${precip.toStringAsFixed(1)} mm', 'Lluvia'),
                     if (wind != null)
-                      _buildWeatherPill(Icons.air_rounded, '${(wind * 3.6).round()} km/h', 'Viento'),
+                      _buildWeatherPill(Icons.air_rounded, '${wind.round()} km/h', 'Viento'),
                     // Etiqueta "Condiciones análisis"
                     Container(
                       margin: const EdgeInsets.only(left: 6),
@@ -1540,7 +1546,7 @@ class _HomeScreenState extends State<HomeScreen>
     final weatherName = d['weather_name'] as String? ?? '—';
     final code        = d['weather_code'] as int?;
     final sueloNivel  = d['suelo_nivel'] as String? ?? '—';
-    final wind        = (d['wind_speed'] as num?)?.toDouble();
+    final wind        = (d['wind_speed_kmh'] as num?)?.toDouble();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1643,7 +1649,7 @@ class _HomeScreenState extends State<HomeScreen>
               if (wind != null)
                 _buildClimaMetric(
                     Icons.air_rounded,
-                    '${(wind * 3.6).round()} km/h',
+                    '${wind.round()} km/h',
                     'Viento'),
             ],
           ),
@@ -1772,12 +1778,6 @@ class _HomeScreenState extends State<HomeScreen>
       },
       child: Scaffold(
       backgroundColor: const Color(0xFFF4F6F8),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF0B57D0),
-        foregroundColor: Colors.white,
-        onPressed: () => _abrirSegmentacionPrincipal(context),
-        child: const Icon(Icons.add_rounded, size: 30),
-      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (i) => setState(() => _selectedIndex = i),
@@ -2128,7 +2128,7 @@ class _HomeScreenState extends State<HomeScreen>
         crossAxisCount: 2,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
-        childAspectRatio: 1.1,
+        childAspectRatio: 0.95,
       ),
       itemCount: features.length,
       itemBuilder: (context, index) {
@@ -2171,7 +2171,7 @@ class _HomeScreenState extends State<HomeScreen>
         splashColor: color.withOpacity(0.2),
         highlightColor: color.withOpacity(0.08),
         child: Ink(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
@@ -2181,28 +2181,12 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (isNovedad)
-                Align(
-                  alignment: Alignment.topRight,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEADCFB),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Novedad',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF2FF),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFEAF2FF),
                   shape: BoxShape.circle,
                 ),
                 child: imagePath != null
@@ -2220,10 +2204,10 @@ class _HomeScreenState extends State<HomeScreen>
               const SizedBox(height: 12),
               Text(
                 title,
-                style: TextStyle(
-                  fontSize: 15,
+                style: const TextStyle(
+                  fontSize: 14.5,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF1F2937),
+                  color: Color(0xFF1F2937),
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 1,
@@ -2233,9 +2217,9 @@ class _HomeScreenState extends State<HomeScreen>
               Flexible(
                 child: Text(
                   description,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: const Color(0xFF6B7280),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF6B7280),
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 2,

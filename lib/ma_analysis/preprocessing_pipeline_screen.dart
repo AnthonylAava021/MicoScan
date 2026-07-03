@@ -11,7 +11,7 @@ import 'ma_pipeline_store.dart';
 
 const String kPreprocessApiUrl = String.fromEnvironment(
   'MA_API_URL',
-  defaultValue: 'https://dana-epa-exhibition-slight.trycloudflare.com/api/preprocess',
+  defaultValue: 'https://washer-angela-flights-based.trycloudflare.com/api/preprocess',
 );
 
 class PreprocesarPipelineScreen extends StatefulWidget {
