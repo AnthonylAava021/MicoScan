@@ -7,33 +7,28 @@ import 'package:image/image.dart' as img;
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:path_provider/path_provider.dart';
 
-/// Clasificador local offline — ResNet-50 exportado como ONNX.
+import 'dart:ui';
+import 'ma_models.dart';
+
+/// Clasificador local offline — Mask R-CNN de la API exportado como ONNX.
 ///
-/// Preprocesamiento NCHW con normalización ImageNet:
-///   R = (R/255 − 0.485) / 0.229
-///   G = (G/255 − 0.456) / 0.224
-///   B = (B/255 − 0.406) / 0.225
+/// Preprocesamiento NCHW con rango [0, 1] (sin normalización manual, el modelo la hace interna).
 ///
-/// Output 'logits': [1,4] → [background=0, arbuscule=1, vesicle=2, hypha=3]
+/// Output:
+///   - 'boxes': [num_detections, 4] -> [xmin, ymin, xmax, ymax]
+///   - 'labels': [num_detections] -> indices de clase
+///   - 'scores': [num_detections] -> confianzas
 class AmfLocalClassifier {
   AmfLocalClassifier._();
   static final AmfLocalClassifier instance = AmfLocalClassifier._();
 
   static const _assetPath = 'assets/models/modelo_amf.onnx';
   static const _inputSize = 512;
-  static const _mean = [0.485, 0.456, 0.406];
-  static const _std  = [0.229, 0.224, 0.225];
+  static const _classes = ["__background__", "arbuscule", "vesicle", "hypha"];
 
   OrtSession? _session;
   bool _cargando = false;
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Carga del modelo
-  // ───────────────────────────────────────────────────────────────────────────
-
-  /// Carga el modelo (idempotente). El archivo se extrae de los assets a un
-  /// directorio de documentos la primera vez y luego se usa [OrtSession.fromFile],
-  /// evitando cargar 94 MB en RAM como Uint8List.
   Future<void> load() async {
     if (_session != null) return;
     if (_cargando) {
@@ -45,21 +40,13 @@ class AmfLocalClassifier {
     _cargando = true;
     try {
       OrtEnv.instance.init();
-
-      // Extraer el asset a un File local la primera vez
       final modelFile = await _extractModelFile();
-
-      debugPrint('[AmfClassifier] Cargando modelo desde: ${modelFile.path}');
+      debugPrint('[AmfClassifier] Cargando detector ONNX desde: ${modelFile.path}');
       final opts = OrtSessionOptions();
-
-      // Ceder un frame a la UI antes de que fromFile() bloquee el hilo principal.
       await Future<void>.delayed(const Duration(milliseconds: 16));
-
       _session = OrtSession.fromFile(modelFile, opts);
       opts.release();
-
-      debugPrint('[AmfClassifier] ✓ Modelo listo. '
-          'inputs=${_session!.inputNames} outputs=${_session!.outputNames}');
+      debugPrint('[AmfClassifier] ✓ Modelo listo. inputs=${_session!.inputNames} outputs=${_session!.outputNames}');
     } catch (e, st) {
       debugPrint('[AmfClassifier] ✗ Error al cargar: $e\n$st');
       rethrow;
@@ -68,12 +55,9 @@ class AmfLocalClassifier {
     }
   }
 
-  /// Extrae el asset ONNX al directorio de documentos (una sola vez).
-  /// Verifica el tamaño exacto para detectar extracciones incompletas.
   Future<File> _extractModelFile() async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/modelo_amf.onnx');
-
     final byteData = await rootBundle.load(_assetPath);
     final expectedSize = byteData.lengthInBytes;
 
@@ -88,17 +72,14 @@ class AmfLocalClassifier {
     return file;
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Clasificación
-  // ───────────────────────────────────────────────────────────────────────────
+  /// Ejecuta detección de objetos en la imagen local.
+  Future<List<MaBoundingBox>> detectObjects(img.Image source, {double threshold = 0.05}) async {
+    if (_session == null) {
+      throw StateError('[AmfClassifier] El detector no está inicializado.');
+    }
 
-  /// Clasifica [source]. Retorna probabilidades softmax:
-  ///   { 'arbuscule': 0.xx, 'vesicle': 0.xx, 'hypha': 0.xx }
-  Future<Map<String, double>> classifyImage(img.Image source) async {
-    if (_session == null) await load();
-
-    // Preprocesar en Isolate — 786 432 operaciones float, no bloquear UI
-    final tensor = await compute(_buildTensor, _PreprocInput(source, _inputSize, _mean, _std));
+    // Preprocesar en Isolate (rango [0, 1] sin normalización ImageNet)
+    final tensor = await compute(_buildTensor, _PreprocInput(source, _inputSize));
 
     final inputName = _session!.inputNames.first;
     final input = OrtValueTensor.createTensorWithDataList(
@@ -118,30 +99,69 @@ class AmfLocalClassifier {
       runOptions.release();
     }
 
-    final outputValue = outputs.first;
-    if (outputValue == null) {
-      throw StateError('[AmfClassifier] output nulo tras inferencia.');
+    final outputNames = _session!.outputNames;
+    OrtValue? boxesVal;
+    OrtValue? labelsVal;
+    OrtValue? scoresVal;
+
+    for (int i = 0; i < outputNames.length; i++) {
+      final name = outputNames[i];
+      if (name == 'boxes') boxesVal = outputs[i];
+      if (name == 'labels') labelsVal = outputs[i];
+      if (name == 'scores') scoresVal = outputs[i];
     }
 
-    final logits = _extractLogits(outputValue.value);
-    outputValue.release();
+    if (boxesVal == null || labelsVal == null || scoresVal == null) {
+      for (final out in outputs) {
+        out?.release();
+      }
+      throw StateError('[AmfClassifier] Faltan salidas en el modelo detector.');
+    }
 
-    debugPrint('[AmfClassifier] logits=$logits');
-    final probs = _softmax(logits);
-    debugPrint('[AmfClassifier] probs=$probs');
+    final rawBoxes = _extractDouble2D(boxesVal.value);
+    final rawLabels = _extractInt1D(labelsVal.value);
+    final rawScores = _extractDouble1D(scoresVal.value);
 
-    return {
-      'arbuscule': probs[1],
-      'vesicle':   probs[2],
-      'hypha':     probs[3],
-    };
+    // Liberar outputs
+    for (final out in outputs) {
+      out?.release();
+    }
+
+    final detections = <MaBoundingBox>[];
+    final numDetections = rawScores.length;
+
+    for (int i = 0; i < numDetections; i++) {
+      final score = rawScores[i];
+      final labelIdx = rawLabels[i];
+      if (labelIdx < 1 || labelIdx >= _classes.length) continue;
+
+      // Umbrales calibrados altamente sensibles para emular la densidad de la API de forma local
+      double minScore = 0.08; // arbuscule (1)
+      if (labelIdx == 2) minScore = 0.03; // vesicle (2)
+      if (labelIdx == 3) minScore = 0.06; // hypha (3)
+
+      if (score < minScore) continue;
+
+      final labelName = _classes[labelIdx];
+      final box = rawBoxes[i];
+
+      // Escalar de la resolución del modelo (512x512) al espacio de referencia (224x224)
+      const scale = 224.0 / 512.0;
+      final x1 = box[0] * scale;
+      final y1 = box[1] * scale;
+      final x2 = box[2] * scale;
+      final y2 = box[3] * scale;
+
+      detections.add(MaBoundingBox(
+        estructura: labelName,
+        confianza: score,
+        rect: Rect.fromLTRB(x1, y1, x2, y2),
+      ));
+    }
+
+    return detections;
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Helpers privados
-  // ───────────────────────────────────────────────────────────────────────────
-
-  /// Preprocesamiento ejecutado en un Isolate separado.
   static Float32List _buildTensor(_PreprocInput p) {
     final resized = img.copyResize(
       p.source,
@@ -151,53 +171,61 @@ class AmfLocalClassifier {
     );
     final planeSize = p.size * p.size;
     final buf = Float32List(3 * planeSize);
-    for (var y = 0; y < p.size; y++) {
-      for (var x = 0; x < p.size; x++) {
-        final px = resized.getPixel(x, y);
-        final i = y * p.size + x;
-        buf[i]                = (px.r / 255.0 - p.mean[0]) / p.std[0];
-        buf[planeSize + i]    = (px.g / 255.0 - p.mean[1]) / p.std[1];
-        buf[2 * planeSize + i]= (px.b / 255.0 - p.mean[2]) / p.std[2];
-      }
+    
+    // Normalización de ImageNet requerida por el modelo detector entrenado
+    const mean = [0.485, 0.456, 0.406];
+    const std  = [0.229, 0.224, 0.225];
+
+    int idx = 0;
+    for (final pixel in resized) {
+      buf[idx] = (pixel.r / 255.0 - mean[0]) / std[0];
+      buf[planeSize + idx] = (pixel.g / 255.0 - mean[1]) / std[1];
+      buf[2 * planeSize + idx] = (pixel.b / 255.0 - mean[2]) / std[2];
+      idx++;
+      if (idx >= planeSize) break;
     }
     return buf;
   }
 
-  /// Extrae logits del valor de salida independientemente del tipo exacto.
-  List<double> _extractLogits(dynamic raw) {
-    if (raw is List<List<double>>) return raw.first;
-    if (raw is List<double>) return raw;
-    // Fallback para cualquier otro tipo anidado
-    final flat = <double>[];
-    for (final item in raw as List) {
-      if (item is List) {
-        flat.addAll(item.map<double>((v) => (v as num).toDouble()));
-      } else {
-        flat.add((item as num).toDouble());
-      }
+  List<List<double>> _extractDouble2D(dynamic raw) {
+    if (raw is List<List<double>>) return raw;
+    if (raw is List) {
+      return raw.map<List<double>>((row) {
+        if (row is List) {
+          return row.map<double>((v) => (v as num).toDouble()).toList();
+        }
+        return [(row as num).toDouble()];
+      }).toList();
     }
-    return flat;
+    return [];
   }
 
-  static List<double> _softmax(List<double> logits) {
-    final maxL = logits.reduce(math.max);
-    final exp  = logits.map((v) => math.exp(v - maxL)).toList();
-    final sum  = exp.reduce((a, b) => a + b);
-    return exp.map((v) => v / sum).toList();
+  List<int> _extractInt1D(dynamic raw) {
+    if (raw is List<int>) return raw;
+    if (raw is Int64List) return raw.toList();
+    if (raw is List) {
+      return raw.map<int>((v) => (v as num).toInt()).toList();
+    }
+    return [];
   }
 
-  /// Libera la sesión ONNX.
+  List<double> _extractDouble1D(dynamic raw) {
+    if (raw is List<double>) return raw;
+    if (raw is Float32List) return raw.toList();
+    if (raw is List) {
+      return raw.map<double>((v) => (v as num).toDouble()).toList();
+    }
+    return [];
+  }
+
   void dispose() {
     _session?.release();
     _session = null;
   }
 }
 
-// Clase auxiliar para pasar parámetros al Isolate (compute requiere un único arg)
 class _PreprocInput {
   final img.Image source;
   final int size;
-  final List<double> mean;
-  final List<double> std;
-  const _PreprocInput(this.source, this.size, this.mean, this.std);
+  const _PreprocInput(this.source, this.size);
 }

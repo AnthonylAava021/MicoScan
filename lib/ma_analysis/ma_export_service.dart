@@ -316,7 +316,7 @@ class MaExportService {
 
           // ── Imágenes del Análisis (Segmentación y Grad-CAM) ───────────────
           if ((resultado.overlayPath != null && File(resultado.overlayPath!).existsSync()) ||
-              (resultado.gradCamPath != null && File(resultado.gradCamPath!).existsSync())) ...[
+              (!resultado.offline && resultado.gradCamPath != null && File(resultado.gradCamPath!).existsSync())) ...[
             pw.SizedBox(height: 14),
             pw.Text('Visualización del análisis',
                 style: pw.TextStyle(
@@ -345,9 +345,9 @@ class MaExportService {
                       ],
                     ),
                   ),
-                if (resultado.overlayPath != null && resultado.gradCamPath != null && File(resultado.overlayPath!).existsSync() && File(resultado.gradCamPath!).existsSync())
+                if (resultado.overlayPath != null && !resultado.offline && resultado.gradCamPath != null && File(resultado.overlayPath!).existsSync() && File(resultado.gradCamPath!).existsSync())
                   pw.SizedBox(width: 14),
-                if (resultado.gradCamPath != null && File(resultado.gradCamPath!).existsSync())
+                if (!resultado.offline && resultado.gradCamPath != null && File(resultado.gradCamPath!).existsSync())
                   pw.Expanded(
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.center,

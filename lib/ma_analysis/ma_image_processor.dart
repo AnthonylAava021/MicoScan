@@ -87,6 +87,7 @@ class MaImageProcessor {
     required img.Image source,
     required double umbralBrillo,
     required String workDir,
+    img.Color? colorMascara,
   }) async {
     final processed = preprocesar(source, size: inputSizeLocal);
     final w = processed.width;
@@ -98,6 +99,8 @@ class MaImageProcessor {
     var sumG = 0.0;
     var sumB = 0.0;
 
+    final col = colorMascara ?? img.ColorRgb8(46, 125, 50);
+
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         final p = processed.getPixel(x, y);
@@ -107,7 +110,7 @@ class MaImageProcessor {
           sumR += p.r;
           sumG += p.g;
           sumB += p.b;
-          mask.setPixel(x, y, img.ColorRgb8(46, 125, 50));
+          mask.setPixel(x, y, col);
         } else {
           mask.setPixel(x, y, img.ColorRgba8(0, 0, 0, 0));
         }

@@ -797,7 +797,10 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
     if (result == 'pipeline' && mounted) {
-      setState(() => _selectedIndex = 1);
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const PreprocesarPipelineScreen()),
+      );
     }
   }
 
@@ -1788,11 +1791,6 @@ class _HomeScreenState extends State<HomeScreen>
             label: 'Inicio',
           ),
           NavigationDestination(
-            icon: Icon(Icons.auto_fix_high_outlined),
-            selectedIcon: Icon(Icons.auto_fix_high_rounded),
-            label: 'Pipeline',
-          ),
-          NavigationDestination(
             icon: Icon(Icons.bar_chart_outlined),
             selectedIcon: Icon(Icons.bar_chart_rounded),
             label: 'Estadísticas',
@@ -1954,9 +1952,7 @@ class _HomeScreenState extends State<HomeScreen>
             : []),
         ],
       ),
-      // Pantalla 1: Pipeline de preprocesamiento
-      const PreprocesarPipelineScreen(),
-      // Pantalla 2: Estadísticas
+      // Pantalla 1: Estadísticas
       const EstadisticasScreen(),
     ], // fin IndexedStack children
   ), // fin IndexedStack (body)
@@ -2391,201 +2387,643 @@ class _DialogOverlayGuiaState extends State<_DialogOverlayGuia> {
 }
 
 
-class SobreMicorrizasScreen extends StatelessWidget {
+class SobreMicorrizasScreen extends StatefulWidget {
   final ThemeData theme;
 
   const SobreMicorrizasScreen({super.key, required this.theme});
 
   @override
+  State<SobreMicorrizasScreen> createState() => _SobreMicorrizasScreenState();
+}
+
+class _SobreMicorrizasScreenState extends State<SobreMicorrizasScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  int _activeQuizQuestion = 0;
+  int? _selectedQuizAnswer;
+  bool _quizSubmitted = false;
+  int _quizScore = 0;
+
+  // Quiz Questions Data
+  final List<Map<String, dynamic>> _quizQuestions = [
+    {
+      'question': '¿Qué estructura es el centro de intercambio metabólico donde se transfieren los nutrientes?',
+      'options': ['Hifas extrarradicales', 'Vesículas terminales', 'Arbúsculos ramificados'],
+      'correctIndex': 2,
+      'explanation': '¡Correcto! Los arbúsculos crean una enorme superficie de contacto para el intercambio activo de nutrientes entre la planta y el hongo.',
+    },
+    {
+      'question': '¿Cuál es la función principal de las vesículas fúngicas?',
+      'options': ['Explorar el suelo en busca de agua', 'Almacenamiento de triacilgliceroles y energía', 'Apresar nematodos patógenos'],
+      'correctIndex': 1,
+      'explanation': '¡Correcto! Las vesículas actúan como órganos de reserva cargados de lípidos y polifosfatos para periodos de latencia vegetal.',
+    },
+    {
+      'question': '¿Qué compuesto de tinción se une a la quitina fúngica tiñendo el micelio de azul?',
+      'options': ['Hidróxido de potasio (KOH)', 'Azul de Tripán', 'Ácido Clorhídrico (HCl)'],
+      'correctIndex': 1,
+      'explanation': '¡Correcto! El Azul de Tripán al 0.05% tiñe selectivamente las paredes de quitina fúngica de un color azul intenso.',
+    },
+    {
+      'question': '¿Cuál es el primer paso en la colonización radicular de los hongos HMA?',
+      'options': ['Penetración de la pared cortical', 'Germinación e inducción por exudados radiculares', 'Fusión nuclear con las células de la planta'],
+      'correctIndex': 1,
+      'explanation': '¡Correcto! La germinación de las esporas fúngicas se estimula mediante exudados químicos (como estrigolactonas) liberados por la raíz hospedera.',
+    },
+    {
+      'question': '¿Qué es la glomalina y cuál es su beneficio principal en el suelo?',
+      'options': ['Una hormona de crecimiento vegetal', 'Una glicoproteína insoluble que estabiliza y cementa los agregados del suelo', 'Un veneno contra insectos succionadores'],
+      'correctIndex': 1,
+      'explanation': '¡Correcto! La glomalina es secretada por las hifas extrarradicales, actuando como un pegamento que une las partículas del suelo y combate la erosión.',
+    },
+    {
+      'question': '¿Cuál es el ciclo de vida útil estimado para un arbúsculo metabólicamente activo?',
+      'options': ['De 5 a 12 días', 'Aproximadamente 6 meses', 'Todo el periodo vegetativo del cultivo'],
+      'correctIndex': 0,
+      'explanation': '¡Correcto! Los arbúsculos tienen un ciclo dinámico muy efímero de 5 a 12 días, colapsando para liberar nutrientes residuales a la planta.',
+    }
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _resetQuiz() {
+    setState(() {
+      _activeQuizQuestion = 0;
+      _selectedQuizAnswer = null;
+      _quizSubmitted = false;
+      _quizScore = 0;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final theme = widget.theme;
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Sobre micorrizas arbusculares'),
+        title: const Text('Guía de Micorrizas'),
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
         elevation: 0,
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: theme.colorScheme.onPrimary,
+          indicatorWeight: 3.5,
+          labelColor: theme.colorScheme.onPrimary,
+          unselectedLabelColor: theme.colorScheme.onPrimary.withOpacity(0.6),
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12),
+          tabs: const [
+            Tab(icon: Icon(Icons.eco_rounded), text: 'Simbiosis'),
+            Tab(icon: Icon(Icons.lens_blur_rounded), text: 'Estructuras'),
+            Tab(icon: Icon(Icons.science_rounded), text: 'Laboratorio'),
+            Tab(icon: Icon(Icons.psychology_rounded), text: 'Trivia'),
+          ],
+        ),
       ),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: _buildHero(context),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                _buildSection(
-                  context,
-                  Icons.eco_rounded,
-                  'Simbiosis Micorrízica Arbuscular',
-                  'La micorriza arbuscular es una asociación simbiótica mutualista establecida entre hongos del filo Glomeromycota y las raíces de más del 80% de las plantas terrestres. Esta interacción promueve el desarrollo vegetal mediante un eficiente intercambio de nutrientes y agua.',
-                ),
-                _buildSection(
-                  context,
-                  Icons.alt_route_rounded,
-                  '1. Hifas',
-                  'Las hifas son la red de filamentos tubulares que constituyen la estructura vegetativa del hongo (el micelio). Se dividen en:\n\n'
-                  '• Hifas Extrarradicales: Se extienden fuera de la raíz hacia el suelo circundante, explorando poros microscópicos inaccesibles para las raíces de la planta. Absorben agua y nutrientes minerales, principalmente fósforo y nitrógeno.\n\n'
-                  '• Hifas Intrarradicales: Colonizan el interior de la raíz, creciendo tanto en los espacios intercelulares como penetrando las células de la corteza sin romper la membrana plasmática del hospedero.',
-                ),
-                _buildSection(
-                  context,
-                  Icons.lens_blur_rounded,
-                  '2. Vesículas',
-                  'Las vesículas son estructuras globosas, ovoides o elipsoidales de pared gruesa que se forman a partir de las hifas en el interior de la corteza de la raíz (inter o intracelularmente).\n\n'
-                  'Su función principal es servir como órganos de almacenamiento de sustancias lipídicas y reservas energéticas para el hongo. En periodos adversos o de senescencia de la raíz, ayudan a la supervivencia a largo plazo del simbionte, actuando opcionalmente como propágulos vegetativos.',
-                ),
-                _buildSection(
-                  context,
-                  Icons.grain_rounded,
-                  '3. Arbúsculos',
-                  'Los arbúsculos son las estructuras diagnósticas y definitorias de la simbiosis arbuscular. Son ramificaciones hifales dicotómicas microscópicas y altamente complejas que se desarrollan dentro de las células corticales de la raíz de la planta.\n\n'
-                  'Actúan como la interfaz principal para el intercambio de nutrientes: es el sitio donde el hongo libera fósforo, nitrógeno y micronutrientes a la planta, y a cambio absorbe los carbohidratos (fotosintatos) y lípidos sintetizados por el vegetal. Tienen una vida útil corta de 5 a 15 días, colapsando y siendo digeridos por la célula de la planta para dar paso a nuevas formaciones.',
-                ),
-                _buildSection(
-                  context,
-                  Icons.lightbulb_rounded,
-                  'Importancia en el Análisis',
-                  'La detección, segmentación y cuantificación de estas tres estructuras (Hifas, Vesículas y Arbúsculos) en muestras teñidas de raíces es el estándar científico para evaluar el porcentaje de colonización micorrízica y la efectividad de la simbiosis en campo.',
-                ),
-              ]),
-            ),
-          ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildSimbiosisTab(),
+          _buildEstructurasTab(),
+          _buildLaboratorioTab(),
+          _buildTriviaTab(),
         ],
       ),
     );
   }
 
-  Widget _buildHero(BuildContext context) {
-    return Stack(
+  // TAB 1: SIMBIOSIS GENERAL
+  Widget _buildSimbiosisTab() {
+    final theme = widget.theme;
+    return ListView(
+      padding: const EdgeInsets.all(20),
       children: [
-        Positioned.fill(
-          child: Image.asset(
-            'imagenes/BANNER.png',
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      theme.colorScheme.primary,
-                      theme.colorScheme.primary.withOpacity(0.85),
-                    ],
-                  ),
-                ),
-              );
-            },
+        Card(
+          elevation: 0,
+          color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.15)),
           ),
-        ),
-        Positioned.fill(
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withOpacity(0.35),
-                  Colors.black.withOpacity(0.6),
-                ],
-              ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.eco_rounded, color: theme.colorScheme.primary, size: 28),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Simbiosis Ancestral',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'La micorriza arbuscular (HMA) es una asociación simbiótica mutualista ancestral que data de hace más de 450 millones de años, fundamental para la colonización terrestre de las plantas.\n\nSe establece entre hongos del filo Glomeromycota y las raíces de más del 80% de las familias botánicas terrestres. En esta relación de beneficio mutuo, el hongo suministra agua y nutrientes del suelo (especialmente fósforo) y la planta provee carbohidratos.',
+                  style: TextStyle(fontSize: 15, height: 1.5, color: theme.colorScheme.onSurface),
+                ),
+              ],
             ),
           ),
         ),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 44, horizontal: 24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: 20),
-              Text(
-                'Estructuras Arbusculares',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black.withOpacity(0.5),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Hifas, Vesículas y Arbúsculos',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.white.withOpacity(0.95),
-                  shadows: [
-                    Shadow(
-                      color: Colors.black.withOpacity(0.5),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+        const SizedBox(height: 16),
+        Text(
+          'Beneficios Clave',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+        ),
+        const SizedBox(height: 10),
+        _buildBenefitItem(
+          Icons.water_drop_rounded,
+          'Tolerancia Sequía',
+          'Las hifas extrarradicales exploran micro-poros profundos aumentando la absorción hídrica de los cultivos.',
+          theme.colorScheme.primary,
+        ),
+        _buildBenefitItem(
+          Icons.shield_rounded,
+          'Protección Fitosanitaria',
+          'Dificulta la colonización de nematodos y patógenos como Fusarium induciendo defensas en la raíz.',
+          theme.colorScheme.primary,
+        ),
+        _buildBenefitItem(
+          Icons.auto_awesome_rounded,
+          'Estructura y Salud del Suelo',
+          'El hongo secreta glomalina, estabilizando agregados físicos y combatiendo la erosión del suelo.',
+          theme.colorScheme.primary,
+        ),
+        _buildBenefitItem(
+          Icons.energy_savings_leaf_rounded,
+          'Nutrición y Ahorro de Insumos',
+          'Optimiza la asimilación del fósforo natural fijo, permitiendo reducir la aplicación de fertilizantes químicos sintéticos.',
+          theme.colorScheme.primary,
         ),
       ],
     );
   }
 
-  Widget _buildSection(BuildContext context, IconData icon, String title, String body) {
+  Widget _buildBenefitItem(IconData icon, String title, String body, Color iconColor) {
+    final theme = widget.theme;
     return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.15)),
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.1)),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: theme.colorScheme.primary, size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
+          Icon(icon, color: iconColor, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            body,
-            style: TextStyle(
-              fontSize: 15,
-              height: 1.55,
-              color: theme.colorScheme.onSurface.withOpacity(0.9),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withOpacity(0.8)),
+                ),
+              ],
             ),
-          ),
+          )
         ],
       ),
+    );
+  }
+
+  // TAB 2: EXPLORADOR INTERACTIVO DE ESTRUCTURAS
+  Widget _buildEstructurasTab() {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        _buildInteractiveStructureCard(
+          '1. Arbúsculo (La Interfaz)',
+          'Los arbúsculos son estructuras ramificadas intracelulares arborescentes donde ocurre el intercambio de fósforo, nitrógeno y carbono entre planta y hongo.',
+          'Duración: Su ciclo de vida es efímero (5-12 días), tras lo cual se disuelven reabasteciendo a la célula cortical radicular.',
+          const Color(0xFFDC1E1E), // Rojo
+          Icons.grain_rounded,
+        ),
+        _buildInteractiveStructureCard(
+          '2. Vesícula (El Almacén)',
+          'Órganos ovoides intercelulares e intracelulares con paredes gruesas cargados con triacilgliceroles, lípidos y polifosfatos.',
+          'Supervivencia: Actúan como el principal reservorio de energía del hongo ante periodos de senescencia o estrés vegetal.',
+          const Color(0xFF1E64FF), // Azul
+          Icons.lens_blur_rounded,
+        ),
+        _buildInteractiveStructureCard(
+          '3. Hifa (La Red de Exploración)',
+          'Conductos microscópicos de quitina divididos en micelio extrarradical (explora el suelo) e intrarradical (transporta nutrientes por la corteza).',
+          'Eficiencia: Multiplican hasta 100 veces el alcance físico de absorción de las raíces de la planta.',
+          const Color(0xFF14C828), // Verde
+          Icons.alt_route_rounded,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInteractiveStructureCard(
+    String title,
+    String description,
+    String note,
+    Color accentColor,
+    IconData icon,
+  ) {
+    final theme = widget.theme;
+    return StatefulBuilder(
+      builder: (context, setStateCard) {
+        bool isExpanded = false;
+        return Card(
+          elevation: 0,
+          margin: const EdgeInsets.only(bottom: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: accentColor.withOpacity(0.3), width: 1.5),
+          ),
+          child: InkWell(
+            onTap: () {
+              setStateCard(() {
+                isExpanded = !isExpanded;
+              });
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: accentColor.withOpacity(0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(icon, color: accentColor, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        color: theme.colorScheme.outline,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    description,
+                    style: TextStyle(fontSize: 14, height: 1.5, color: theme.colorScheme.onSurface.withOpacity(0.85)),
+                  ),
+                  if (isExpanded) ...[
+                    const SizedBox(height: 12),
+                    Divider(color: accentColor.withOpacity(0.15)),
+                    const SizedBox(height: 6),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline_rounded, color: accentColor, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            note,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // TAB 3: PASOS DE LABORATORIO
+  Widget _buildLaboratorioTab() {
+    final theme = widget.theme;
+    final steps = [
+      {
+        'title': '1. Clarificación (KOH)',
+        'desc': 'Se sumergen las raíces en Hidróxido de Potasio (KOH al 10%) a 90°C. Esto degrada el citoplasma y pigmentos de la raíz sin destruir las estructuras de quitina fúngica.',
+        'icon': Icons.opacity_rounded,
+      },
+      {
+        'title': '2. Acidificación (HCl)',
+        'desc': 'Las raíces clarificadas se neutralizan con Ácido Clorhídrico (HCl al 1%) para facilitar la adhesión química del colorante posterior.',
+        'icon': Icons.science_rounded,
+      },
+      {
+        'title': '3. Tinción (Azul de Tripán)',
+        'desc': 'Se calientan las raíces teñidas en una solución ácida de Azul de Tripán al 0.05%. El reactivo tiñe de color azul intenso las hifas, vesículas y arbúsculos fúngicos.',
+        'icon': Icons.colorize_rounded,
+      }
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text(
+          'Protocolo de Laboratorio',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+        ),
+        const SizedBox(height: 12),
+        ...List.generate(steps.length, (idx) {
+          final s = steps[idx];
+          return Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(s['icon'] as IconData, color: theme.colorScheme.onPrimary, size: 20),
+                    ),
+                    if (idx < steps.length - 1)
+                      Container(
+                        width: 2.5,
+                        height: 90,
+                        color: theme.colorScheme.primary.withOpacity(0.3),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Card(
+                    elevation: 0,
+                    color: theme.colorScheme.surfaceContainerLow,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.1)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            s['title'] as String,
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            s['desc'] as String,
+                            style: TextStyle(fontSize: 14, height: 1.45, color: theme.colorScheme.onSurface),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  // TAB 4: TRIVIA INTERACTIVA
+  Widget _buildTriviaTab() {
+    final theme = widget.theme;
+    if (_activeQuizQuestion >= _quizQuestions.length) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.emoji_events_rounded, color: Colors.amber, size: 72),
+            const SizedBox(height: 16),
+            Text(
+              '¡Desafío Completado!',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tu puntuación es de $_quizScore de ${_quizQuestions.length} respuestas correctas.',
+              style: TextStyle(fontSize: 15, color: theme.colorScheme.onSurface.withOpacity(0.8)),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _resetQuiz,
+              icon: const Icon(Icons.replay_rounded),
+              label: const Text('Reintentar Trivia'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            )
+          ],
+        ),
+      );
+    }
+
+    final q = _quizQuestions[_activeQuizQuestion];
+    final options = q['options'] as List<String>;
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Pregunta ${_activeQuizQuestion + 1}/${_quizQuestions.length}',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+            ),
+            Text(
+              'Puntos: $_quizScore',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: (_activeQuizQuestion + 1) / _quizQuestions.length,
+          backgroundColor: theme.colorScheme.outline.withOpacity(0.15),
+          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          q['question'] as String,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+        ),
+        const SizedBox(height: 20),
+        ...List.generate(options.length, (idx) {
+          final isSelected = _selectedQuizAnswer == idx;
+          final isCorrect = idx == q['correctIndex'];
+          
+          Color cardColor = theme.colorScheme.surfaceContainerLow;
+          Color borderColor = theme.colorScheme.outline.withOpacity(0.15);
+
+          if (_quizSubmitted) {
+            if (isCorrect) {
+              cardColor = Colors.green.shade50;
+              borderColor = Colors.green.shade400;
+            } else if (isSelected) {
+              cardColor = Colors.red.shade50;
+              borderColor = Colors.red.shade400;
+            }
+          } else if (isSelected) {
+            cardColor = theme.colorScheme.primaryContainer.withOpacity(0.3);
+            borderColor = theme.colorScheme.primary;
+          }
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: borderColor, width: isSelected || _quizSubmitted ? 2.0 : 1.0),
+            ),
+            child: InkWell(
+              onTap: _quizSubmitted ? null : () {
+                setState(() {
+                  _selectedQuizAnswer = idx;
+                });
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Text(
+                      String.fromCharCode(65 + idx) + '.',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? theme.colorScheme.primary : theme.colorScheme.outline,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        options[idx],
+                        style: TextStyle(fontSize: 15, color: theme.colorScheme.onSurface),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+        const SizedBox(height: 20),
+        if (!_quizSubmitted)
+          ElevatedButton(
+            onPressed: _selectedQuizAnswer == null ? null : () {
+              setState(() {
+                _quizSubmitted = true;
+                if (_selectedQuizAnswer == q['correctIndex']) {
+                  _quizScore++;
+                }
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Enviar Respuesta'),
+          )
+        else ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _selectedQuizAnswer == q['correctIndex']
+                  ? Colors.green.shade50
+                  : Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _selectedQuizAnswer == q['correctIndex']
+                    ? Colors.green.shade200
+                    : Colors.amber.shade200,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _selectedQuizAnswer == q['correctIndex'] ? '¡Correcto!' : 'Respuesta incorrecta',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: _selectedQuizAnswer == q['correctIndex'] ? Colors.green.shade800 : Colors.amber.shade800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  q['explanation'] as String,
+                  style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _activeQuizQuestion++;
+                _selectedQuizAnswer = null;
+                _quizSubmitted = false;
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text(
+              _activeQuizQuestion == _quizQuestions.length - 1 ? 'Ver Puntuación' : 'Siguiente Pregunta',
+            ),
+          )
+        ]
+      ],
     );
   }
 }

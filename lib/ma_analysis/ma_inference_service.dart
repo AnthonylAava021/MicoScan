@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 
 import 'amf_local_classifier.dart';
 import 'dev_http_client.dart';
@@ -37,13 +39,29 @@ class MaInferenceService {
     final workDir = await MaImageProcessor.workDirectory();
 
     await AmfLocalClassifier.instance.load();
-    final probs = await AmfLocalClassifier.instance.classifyImage(source);
+    final cajas = await AmfLocalClassifier.instance.detectObjects(source, threshold: umbralBrillo);
 
-    final estructurasOnnx = [
-      MaEstructuraDetectada(nombre: 'Arbúsculo', confianza: probs['arbuscule']!),
-      MaEstructuraDetectada(nombre: 'Vesícula',  confianza: probs['vesicle']!),
-      MaEstructuraDetectada(nombre: 'Hifa',      confianza: probs['hypha']!),
-    ]..sort((a, b) => b.confianza.compareTo(a.confianza));
+    // Conteo de estructuras detectadas localmente
+    int cArbusculos = 0;
+    int cVesiculas = 0;
+    int cHifas = 0;
+
+    for (final d in cajas) {
+      if (d.estructura == 'arbuscule') cArbusculos++;
+      if (d.estructura == 'vesicle') cVesiculas++;
+      if (d.estructura == 'hypha') cHifas++;
+    }
+
+    final counts = {
+      'arbuscule': cArbusculos,
+      'vesicle':   cVesiculas,
+      'hypha':     cHifas,
+    };
+
+    final totalDetecciones = cArbusculos + cVesiculas + cHifas;
+    final colonizacion = totalDetecciones > 0;
+
+    final estructurasOnnx = _countsToEstructuras(counts);
 
     final data = await MaImageProcessor.analizarEdge(
       source: source,
@@ -51,15 +69,25 @@ class MaInferenceService {
       workDir: workDir,
     );
 
-    final resumenOnnx =
-        'Clasificación offline (ONNX ResNet-50). '
-        'Arbúsculo: ${(probs["arbuscule"]! * 100).toStringAsFixed(1)}% | '
-        'Vesícula: ${(probs["vesicle"]! * 100).toStringAsFixed(1)}% | '
-        'Hifa: ${(probs["hypha"]! * 100).toStringAsFixed(1)}%. '
-        'Área segmentada: ${(data.areaSegmentada * 100).toStringAsFixed(1)}%.';
+    final visibles = <String>[];
+    if (cArbusculos > 0) visibles.add('Arbúsculos ($cArbusculos)');
+    if (cVesiculas > 0) visibles.add('Vesículas ($cVesiculas)');
+    if (cHifas > 0) visibles.add('Hifas ($cHifas)');
 
-    // Determinar colonización: si alguna prob > 25 %
-    final colonizacion = probs.values.any((p) => p > 0.25);
+    final String textoColonizacion = colonizacion 
+        ? 'SÍ (Colonización Micorrízica Detectada)' 
+        : 'NO (No se detectó colonización)';
+
+    final String textoEstructuras = visibles.isNotEmpty 
+        ? 'Estructuras identificadas: ${visibles.join(", ")}.' 
+        : 'No se identificaron estructuras fúngicas.';
+
+    final resumenOnnx =
+        'Análisis Local (100% Offline):\n'
+        '• Colonización: $textoColonizacion\n'
+        '• $textoEstructuras\n'
+        '• Total estructuras: $totalDetecciones unidades\n'
+        '• Raíz Segmentada (Área): ${(data.areaSegmentada * 100).toStringAsFixed(1)}%';
 
     return MaResultadoAnalisis(
       modo:              MaModoInferencia.local,
@@ -68,7 +96,7 @@ class MaInferenceService {
       gradCamPath:       data.gradCamPath,
       overlayPath:       data.overlayPath,
       estructuras:       estructurasOnnx,
-      cajas:             data.cajas,
+      cajas:             cajas,
       resumen:           resumenOnnx,
       areaSegmentada:    data.areaSegmentada,
       latenciaMs:        DateTime.now().difference(inicio).inMilliseconds,
@@ -76,11 +104,7 @@ class MaInferenceService {
       modelo:            MaModelo.m1,
       modoViz:           MaModoViz.gtStyle,
       colonizacion:      colonizacion,
-      counts: {
-        'arbuscule': (probs['arbuscule']! > 0.25) ? 1 : 0,
-        'vesicle':   (probs['vesicle']!   > 0.25) ? 1 : 0,
-        'hypha':     (probs['hypha']!     > 0.25) ? 1 : 0,
-      },
+      counts:            counts,
     );
   }
 
@@ -93,10 +117,6 @@ class MaInferenceService {
     MaModelo  modelo  = MaModelo.m1,
     MaModoViz modoViz = MaModoViz.gtStyle,
   }) async {
-    if (!await hayConectividad()) {
-      throw Exception('Sin conexión a internet. Use inferencia local (RF-03).');
-    }
-
     final inicio    = DateTime.now();
     final rawBytes  = await File(imagePath).readAsBytes();
     final base      = apiBase ?? MaApiConfig.baseUrl;
@@ -114,10 +134,16 @@ class MaInferenceService {
       ));
 
     final client   = createDevHttpClient();
-    final streamed = await client.send(request).timeout(
-      const Duration(seconds: _kTimeoutSec),
-      onTimeout: () => throw Exception('Tiempo agotado. Intenta con una imagen más pequeña.'),
-    );
+    http.StreamedResponse streamed;
+    try {
+      streamed = await client.send(request).timeout(
+        const Duration(seconds: _kTimeoutSec),
+        onTimeout: () => throw Exception('Tiempo agotado. Intenta con una imagen más pequeña.'),
+      );
+    } catch (e) {
+      throw Exception('No se pudo establecer conexión con el servidor. Verifica que tu teléfono esté conectado al mismo WiFi que la computadora y que el servidor de IA esté encendido.');
+    }
+
     final response = await http.Response.fromStream(streamed).timeout(
       const Duration(seconds: _kTimeoutSec),
       onTimeout: () => throw Exception('Servidor no respondió a tiempo.'),
@@ -150,10 +176,6 @@ class MaInferenceService {
     String?   apiBase,
     MaModoViz modoViz = MaModoViz.gtStyle,
   }) async {
-    if (!await hayConectividad()) {
-      throw Exception('Sin conexión a internet. Use inferencia local (RF-03).');
-    }
-
     final inicio   = DateTime.now();
     final rawBytes = await File(imagePath).readAsBytes();
     final base     = apiBase ?? MaApiConfig.baseUrl;
@@ -170,10 +192,16 @@ class MaInferenceService {
       ));
 
     final client   = createDevHttpClient();
-    final streamed = await client.send(request).timeout(
-      const Duration(seconds: _kTimeoutSec),
-      onTimeout: () => throw Exception('Tiempo agotado. Intenta con una imagen más pequeña.'),
-    );
+    http.StreamedResponse streamed;
+    try {
+      streamed = await client.send(request).timeout(
+        const Duration(seconds: _kTimeoutSec),
+        onTimeout: () => throw Exception('Tiempo agotado. Intenta con una imagen más pequeña.'),
+      );
+    } catch (e) {
+      throw Exception('No se pudo establecer conexión con el servidor. Verifica que tu teléfono esté conectado al mismo WiFi que la computadora y que el servidor de IA esté encendido.');
+    }
+
     final response = await http.Response.fromStream(streamed).timeout(
       const Duration(seconds: _kTimeoutSec),
       onTimeout: () => throw Exception('Servidor no respondió a tiempo.'),
@@ -388,5 +416,56 @@ class MaInferenceService {
     // El servidor puede enviar data-URI o base64 puro
     final clean = b64.contains(',') ? b64.split(',').last : b64;
     return base64Decode(clean);
+  }
+
+  /// Validación de microscopio para evitar screenshots o imágenes inválidas
+  static bool _validarImagenMicroscopio(img.Image image) {
+    final totalPixeles = image.width * image.height;
+    if (totalPixeles == 0) return false;
+
+    int pureBlack = 0;
+    int pureWhite = 0;
+    int darkPixels = 0;
+
+    // Muestrear píxeles de forma rápida para no ralentizar el celular
+    final int paso = (totalPixeles ~/ 2000).clamp(1, 100);
+    int contados = 0;
+
+    for (int y = 0; y < image.height; y += paso) {
+      for (int x = 0; x < image.width; x += paso) {
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r.toInt();
+        final g = pixel.g.toInt();
+        final b = pixel.b.toInt();
+
+        // 1. Verificar negros o grises muy oscuros (screenshots modo oscuro)
+        final lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (lum < 15) {
+          darkPixels++;
+        }
+
+        // 2. Verificar negros y blancos digitales puros (UI digital/texto)
+        if (r == 0 && g == 0 && b == 0) {
+          pureBlack++;
+        } else if (r == 255 && g == 255 && b == 255) {
+          pureWhite++;
+        }
+        contados++;
+      }
+    }
+
+    if (contados == 0) return false;
+
+    // Si es demasiado oscura (modo oscuro)
+    if (darkPixels / contados > 0.40) {
+      return false;
+    }
+
+    // Si tiene demasiados colores digitales perfectos (UI/Textos)
+    if ((pureBlack + pureWhite) / contados > 0.12) {
+      return false;
+    }
+
+    return true;
   }
 }

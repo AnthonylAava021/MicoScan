@@ -34,7 +34,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
   bool _procesando = false;
   bool _mostrarMascara = true;
   bool _mostrarGradCam = false;
-  double _umbral = 0.55;
+  double _umbral = 0.35;
   MaModoInferencia _modo = MaModoInferencia.local;
   // v2 — API siempre usa M2; visualización GT o Máscaras
   final MaModelo  _modeloSeleccionado = MaModelo.m2;   // API: siempre M2
@@ -201,12 +201,11 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
     if (_mostrarGradCam && _resultado!.gradCamPath != null) {
       return _resultado!.gradCamPath;
     }
+    // En modo remoto, respetamos la máscara
     if (_resultado!.modo == MaModoInferencia.remoto) {
-      return _resultado!.overlayPath ?? _imagenPath;
+      return _mostrarMascara ? (_resultado!.overlayPath ?? _imagenPath) : _imagenPath;
     }
-    if (_mostrarMascara && _resultado!.overlayPath != null) {
-      return _resultado!.overlayPath;
-    }
+    // En modo local (offline), SIEMPRE devolvemos la imagen original limpia (sin máscaras fúngicas pintadas)
     return _imagenPath;
   }
 
@@ -424,18 +423,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
                   selected: {_modo},
                   onSelectionChanged: (s) => setState(() => _modo = s.first),
                 ),
-                if (_modo == MaModoInferencia.local) ...[
-                  const SizedBox(height: 12),
-                  Text('Umbral segmentación', style: theme.textTheme.labelLarge),
-                  Slider(
-                    value: _umbral,
-                    min: 0.2,
-                    max: 0.85,
-                    divisions: 13,
-                    label: _umbral.toStringAsFixed(2),
-                    onChanged: (v) => setState(() => _umbral = v),
-                  ),
-                ] else ...[
+                if (_modo == MaModoInferencia.remoto) ...[
                   // ── Visualización: solo GT Style o Máscaras ─────────────
                   const SizedBox(height: 12),
                   Text('Visualización', style: theme.textTheme.labelLarge),
@@ -511,7 +499,9 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
                               fit: StackFit.expand,
                               children: [
                                 Image.file(File(_imagenVisual!), fit: BoxFit.cover),
-                                if (_resultado != null && _resultado!.modo == MaModoInferencia.remoto)
+                                if (_resultado != null && 
+                                    (_resultado!.modo == MaModoInferencia.local || 
+                                     (_resultado!.modo == MaModoInferencia.remoto && !_mostrarMascara)))
                                   CustomPaint(
                                     painter: _BoundingBoxesPainter(_resultado!.cajas),
                                   ),
@@ -976,7 +966,7 @@ class _SegmentacionClasificacionScreenState extends State<SegmentacionClasificac
                     ),
                   ),
                   child: Text(
-                    '${r.modelo.label} · ${r.latenciaMs} ms',
+                    r.offline ? 'Modelo Local' : r.modelo.label,
                     style: TextStyle(
                       fontSize: 11,
                       color: r.offline ? Colors.indigo.shade700 : Colors.teal.shade700,
